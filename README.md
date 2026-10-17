@@ -44,7 +44,7 @@ The log streams live; **Cancel** kills the running process. The password is pass
 npx --yes @dbx-app/plugin-cli@0.1.9 package .
 ```
 
-Produces `dist/marco.pg-restore-<version>-<target>.dbxp`. In DBX: **Plugin Center → Settings**, enable unsigned
+Produces `dist/alvinades98.pg-backup-restore-<version>-<target>.dbxp`. In DBX: **Plugin Center → Settings**, enable unsigned
 development packages, then install the local `.dbxp`.
 
 Run backend tests (the SDK isn't on crates.io; the CLI ships it):

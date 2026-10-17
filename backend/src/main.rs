@@ -436,7 +436,7 @@ impl PluginHandler for Plugin {
 }
 
 fn main() -> std::io::Result<()> {
-    let metadata = PluginMetadata::new("marco.pg-restore", env!("CARGO_PKG_VERSION"));
+    let metadata = PluginMetadata::new("alvinades98.pg-backup-restore", env!("CARGO_PKG_VERSION"));
     PluginServer::new(metadata, Plugin::default()).serve()
 }
 
