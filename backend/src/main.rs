@@ -44,9 +44,33 @@ struct Plugin {
     upload: Mutex<Option<(PathBuf, File)>>,
 }
 
-/// Files picked in the UI are streamed here, restored, then deleted.
+/// Files picked in the UI are streamed here, restored, then deleted; backups are staged here before download.
 fn upload_dir() -> PathBuf {
     std::env::temp_dir().join("dbx-pg-restore")
+}
+
+/// A fresh file path inside `upload_dir()`; `name` is reduced to a safe single path segment.
+fn temp_path(name: &str) -> Result<PathBuf, PluginError> {
+    let name: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || ".-_".contains(c) { c } else { '_' }).collect();
+    let dir = upload_dir();
+    std::fs::create_dir_all(&dir).map_err(|err| PluginError::new(-32000, format!("Cannot create temp dir: {err}")))?;
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+    Ok(dir.join(format!("{stamp}-{name}")))
+}
+
+/// Resolves `params.path`, refusing anything outside `upload_dir()`.
+fn temp_file(params: &Value) -> Result<PathBuf, PluginError> {
+    let denied = || PluginError::new(-32602, "Path is not a plugin temp file");
+    let path = std::fs::canonicalize(str_param(params, "path")).map_err(|_| denied())?;
+    let dir = std::fs::canonicalize(upload_dir()).map_err(|_| denied())?;
+    if path.starts_with(&dir) && path.is_file() { Ok(path) } else { Err(denied()) }
+}
+
+fn finish_job(job: &Arc<Mutex<Job>>, code: i32) {
+    let mut job = lock(job);
+    job.push(&format!("Finished with exit code {code}"));
+    job.exit_code = Some(code);
+    job.running = false;
 }
 
 #[derive(Debug, PartialEq)]
@@ -135,6 +159,27 @@ fn build_reset(params: &Value) -> Command {
     cmd
 }
 
+fn build_backup(params: &Value, output: &Path) -> Command {
+    let format = str_param(params, "format");
+    let mut cmd = base_command(params, "pg_dump");
+    cmd.arg("-d").arg(str_param(params, "database")).arg("-F").arg(format).arg("-f").arg(output).arg("--verbose");
+    match str_param(params, "content") {
+        "schema" => { cmd.arg("--schema-only"); }
+        "data" => { cmd.arg("--data-only"); }
+        _ => {}
+    }
+    if bool_param(params, "noOwner") {
+        cmd.arg("--no-owner").arg("--no-privileges");
+    }
+    if bool_param(params, "clean") {
+        cmd.arg("--clean").arg("--if-exists");
+    }
+    if let Some(jobs) = params.get("jobs").and_then(Value::as_u64).filter(|j| *j > 1 && format == "d") {
+        cmd.arg("-j").arg(jobs.to_string());
+    }
+    cmd
+}
+
 fn describe(cmd: &Command) -> String {
     let mut parts = vec![cmd.get_program().to_string_lossy().into_owned()];
     parts.extend(cmd.get_args().map(|a| a.to_string_lossy().into_owned()));
@@ -204,17 +249,10 @@ impl Plugin {
         let format = detect_format(Path::new(&file))
             .map_err(|err| PluginError::new(-32602, format!("Cannot read {file}: {err}")))?;
 
-        let mut job = lock(&self.job);
-        if job.running {
-            return Err(PluginError::new(-32000, "A restore is already running"));
-        }
-        let dropped = job.dropped + job.log.len(); // keep offsets monotonic across runs
-        *job = Job { running: true, dropped, ..Job::default() };
-        job.push(&format!(
+        self.begin_job(&format!(
             "Detected format: {}",
             if format == Format::Archive { "pg_dump archive -> pg_restore" } else { "plain SQL -> psql" }
-        ));
-        drop(job);
+        ))?;
 
         let shared = self.job.clone();
         thread::spawn(move || {
@@ -239,12 +277,75 @@ impl Plugin {
             if Path::new(&file).starts_with(upload_dir()) {
                 let _ = std::fs::remove_file(&file);
             }
-            let mut job = lock(&shared);
-            job.push(&format!("Finished with exit code {code}"));
-            job.exit_code = Some(code);
-            job.running = false;
+            finish_job(&shared, code);
         });
         Ok(json!({ "started": true }))
+    }
+
+    /// Resets the shared job for a new run; only one restore or backup runs at a time.
+    fn begin_job(&self, intro: &str) -> Result<(), PluginError> {
+        let mut job = lock(&self.job);
+        if job.running {
+            return Err(PluginError::new(-32000, "Another restore or backup is already running"));
+        }
+        let dropped = job.dropped + job.log.len(); // keep offsets monotonic across runs
+        *job = Job { running: true, dropped, ..Job::default() };
+        job.push(intro);
+        Ok(())
+    }
+
+    fn backup_start(&self, params: Value) -> Result<Value, PluginError> {
+        for key in ["host", "port", "user", "database"] {
+            if str_param(&params, key).is_empty() {
+                return Err(PluginError::new(-32602, format!("Field '{key}' is required")));
+            }
+        }
+        let format = str_param(&params, "format");
+        if !["c", "p", "t", "d"].contains(&format) {
+            return Err(PluginError::new(-32602, "Format must be one of c, p, t, d"));
+        }
+        // Explicit path: pg_dump writes there directly. Otherwise a temp file the UI streams to the user's save target.
+        let output = match str_param(&params, "output") {
+            "" if format == "d" => return Err(PluginError::new(-32602, "Directory format needs an output path")),
+            "" => temp_path(str_param(&params, "name"))?,
+            path => PathBuf::from(path),
+        };
+        self.begin_job(&format!("Backing up \"{}\" to {}", str_param(&params, "database"), output.display()))?;
+        let shared = self.job.clone();
+        let out = output.clone();
+        thread::spawn(move || {
+            let code = run_step(&shared, build_backup(&params, &out));
+            if code != 0 && out.starts_with(upload_dir()) {
+                let _ = std::fs::remove_file(&out);
+            }
+            finish_job(&shared, code);
+        });
+        Ok(json!({ "path": output }))
+    }
+
+    /// Reads a chunk of a finished backup from the plugin's temp dir (never anywhere else).
+    fn download_read(&self, params: Value) -> Result<Value, PluginError> {
+        use std::io::{Seek, SeekFrom};
+        let path = temp_file(&params)?;
+        let offset = params.get("offset").and_then(Value::as_u64).unwrap_or(0);
+        let length = params.get("length").and_then(Value::as_u64).unwrap_or(1 << 20).min(4 << 20);
+        let io_err = |err: std::io::Error| PluginError::new(-32000, format!("Read failed: {err}"));
+        let mut file = File::open(&path).map_err(io_err)?;
+        let size = file.metadata().map_err(io_err)?.len();
+        file.seek(SeekFrom::Start(offset)).map_err(io_err)?;
+        let mut buf = Vec::with_capacity(length as usize);
+        file.take(length).read_to_end(&mut buf).map_err(io_err)?;
+        Ok(json!({
+            "dataBase64": base64::engine::general_purpose::STANDARD.encode(&buf),
+            "length": buf.len(),
+            "eof": offset + buf.len() as u64 >= size,
+            "size": size,
+        }))
+    }
+
+    fn download_delete(&self, params: Value) -> Result<Value, PluginError> {
+        let path = temp_file(&params)?;
+        Ok(json!({ "deleted": std::fs::remove_file(path).is_ok() }))
     }
 
     /// `offset` is the absolute byte position the UI already has; only the new tail is returned.
@@ -266,14 +367,7 @@ impl Plugin {
 
     fn upload_begin(&self, params: Value) -> Result<Value, PluginError> {
         let io_err = |err: std::io::Error| PluginError::new(-32000, format!("Upload failed: {err}"));
-        let name: String = str_param(&params, "name")
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || ".-_".contains(c) { c } else { '_' })
-            .collect();
-        let dir = upload_dir();
-        std::fs::create_dir_all(&dir).map_err(io_err)?;
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-        let path = dir.join(format!("{stamp}-{name}"));
+        let path = temp_path(str_param(&params, "name"))?;
         let file = File::create(&path).map_err(io_err)?;
         let mut upload = self.upload.lock().unwrap_or_else(|p| p.into_inner());
         if let Some((old, _)) = upload.take() {
@@ -333,6 +427,9 @@ impl PluginHandler for Plugin {
             "upload/chunk" => self.upload_chunk(params),
             "upload/finish" => self.upload_finish(),
             "db/list" => self.list_databases(params),
+            "backup/start" => self.backup_start(params),
+            "download/read" => self.download_read(params),
+            "download/delete" => self.download_delete(params),
             _ => Err(PluginError::method_not_found(method)),
         }
     }
@@ -382,6 +479,33 @@ mod tests {
         assert!(line.contains("-d target -v ON_ERROR_STOP=1 -c DO $$"));
         assert!(RESET_SQL.contains("NOT LIKE 'pg\\_%'"));
         assert!(RESET_SQL.ends_with("CREATE SCHEMA public; GRANT USAGE ON SCHEMA public TO PUBLIC;"));
+    }
+
+    #[test]
+    fn backup_command_flags() {
+        let params = json!({ "host": "h", "port": "5432", "user": "u", "password": "p", "database": "src",
+            "format": "d", "content": "schema", "noOwner": true, "jobs": 4 });
+        let line = describe(&build_backup(&params, Path::new("/out")));
+        assert!(line.contains("pg_dump -h h -p 5432 -U u --no-password -d src -F d -f /out --verbose --schema-only --no-owner --no-privileges -j 4"));
+        let plain = describe(&build_backup(&json!({ "format": "p", "jobs": 4 }), Path::new("/o")));
+        assert!(!plain.contains("-j"), "jobs only apply to directory format");
+    }
+
+    #[test]
+    fn download_is_confined_to_temp_dir() {
+        let plugin = Plugin::default();
+        assert!(plugin.download_read(json!({ "path": "/etc/passwd" })).is_err());
+        let path = temp_path("x.dump").unwrap();
+        std::fs::write(&path, b"hello world").unwrap();
+        let first = plugin.download_read(json!({ "path": path, "offset": 0, "length": 5 })).unwrap();
+        assert_eq!(first["dataBase64"], "aGVsbG8=");
+        assert_eq!(first["eof"], false);
+        let rest = plugin.download_read(json!({ "path": path, "offset": 5, "length": 100 })).unwrap();
+        assert_eq!(rest["length"], 6);
+        assert_eq!(rest["eof"], true);
+        let sneaky = format!("{}/../../etc/passwd", upload_dir().display());
+        assert!(plugin.download_read(json!({ "path": sneaky })).is_err());
+        assert_eq!(plugin.download_delete(json!({ "path": path })).unwrap()["deleted"], true);
     }
 
     #[test]

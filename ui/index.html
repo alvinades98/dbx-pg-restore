@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PG Restore</title>
+    <title>PG Backup &amp; Restore</title>
     <style>
       /* DBX injects --color-* / --radius-* / --font-* tokens; fallbacks cover standalone preview. */
       :root {
@@ -122,6 +122,16 @@
       #log .fin.bad { color: var(--danger); }
       .empty { height: 100%; display: grid; place-items: center; text-align: center; color: var(--muted); font-family: var(--font-sans, system-ui, sans-serif); }
       .empty svg { width: 28px; height: 28px; opacity: .6; }
+      .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: calc(var(--radius) + 2px); background: var(--subtle); }
+      .tab { height: 32px; background: transparent; color: var(--muted); border: 0; }
+      .tab:hover { color: var(--fg); }
+      .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px var(--border); }
+      .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--input); border-radius: var(--radius); overflow: hidden; }
+      .seg label { position: relative; display: grid; place-items: center; height: 30px; cursor: pointer; font-size: 12.5px; color: var(--muted); transition: background .12s, color .12s; }
+      .seg label + label { border-left: 1px solid var(--input); }
+      .seg input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; pointer-events: none; }
+      .seg label:has(input:checked) { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--fg); font-weight: 600; }
+      .seg label:has(input:focus-visible) { box-shadow: inset 0 0 0 2px var(--primary); }
       [hidden] { display: none !important; }
       @media (max-width: 900px) { .app { grid-template-columns: 1fr; height: auto; } .log-card { min-height: 420px; } }
     </style>
@@ -137,18 +147,25 @@
       <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></symbol>
       <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
       <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
     </svg>
 
     <div class="app">
-      <form id="form" class="side" autocomplete="off">
+      <form id="form" class="side" autocomplete="off" novalidate>
         <div class="side-scroll">
         <header>
           <div class="logo"><svg width="18" height="18"><use href="#i-db" /></svg></div>
           <div>
-            <h1>PG Restore</h1>
-            <p>Restore pg_dump archives (custom, tar, directory) or plain SQL</p>
+            <h1>PG Backup &amp; Restore</h1>
+            <p>pg_dump / pg_restore for PostgreSQL, right inside DBX</p>
           </div>
         </header>
+
+        <div class="tabs" role="tablist">
+          <button type="button" class="tab" role="tab" data-tab="restore" aria-selected="true"><svg><use href="#i-upload" /></svg>Restore</button>
+          <button type="button" class="tab" role="tab" data-tab="backup" aria-selected="false"><svg><use href="#i-download" /></svg>Backup</button>
+        </div>
 
         <section class="card">
           <div class="card-title">Connection</div>
@@ -161,23 +178,28 @@
             </div>
           </label>
           <div class="grid">
-            <label class="field c4"><span>Host</span><input type="text" name="host" value="localhost" required /></label>
-            <label class="field c2"><span>Port</span><input type="text" name="port" value="5432" inputmode="numeric" required /></label>
-            <label class="field c3"><span>User</span><input type="text" name="user" value="postgres" required /></label>
+            <label class="field c4"><span>Host</span><input type="text" name="host" value="localhost" /></label>
+            <label class="field c2"><span>Port</span><input type="text" name="port" value="5432" inputmode="numeric" /></label>
+            <label class="field c3"><span>User</span><input type="text" name="user" value="postgres" /></label>
             <label class="field c3"><span>Password</span><input type="password" name="password" /></label>
           </div>
           <label class="check" id="rememberBox" hidden><input type="checkbox" id="rememberPassword" />Remember password when saving this connection</label>
+          <details>
+            <summary><svg><use href="#i-chev" /></svg>PostgreSQL client tools</summary>
+            <div class="grid">
+              <label class="field c6"><span>Bin directory</span><input type="text" name="binDir" placeholder="Empty = use PATH, e.g. /usr/lib/postgresql/18/bin" /></label>
+            </div>
+          </details>
         </section>
 
-        <section class="card">
+        <section class="card" data-panel="restore">
           <div class="card-title">Restore</div>
           <label class="field">
             <span>Target database</span>
             <div class="join">
-              <input type="text" name="database" list="databases" placeholder="Pick from list or type a new name" required />
-              <button id="loadDbs" type="button" class="btn-outline btn-icon" title="Load databases from server"><svg><use href="#i-refresh" /></svg></button>
+              <input type="text" name="database" list="databases" placeholder="Pick from list or type a new name" />
+              <button type="button" class="btn-outline btn-icon load-dbs" title="Load databases from server"><svg><use href="#i-refresh" /></svg></button>
             </div>
-            <datalist id="databases"></datalist>
           </label>
 
           <div class="field">
@@ -207,17 +229,69 @@
             <summary><svg><use href="#i-chev" /></svg>Advanced</summary>
             <div class="grid">
               <label class="field c2"><span>Parallel jobs</span><input type="number" name="jobs" min="1" max="32" value="1" /></label>
-              <label class="field c4"><span>PostgreSQL bin directory</span><input type="text" name="binDir" placeholder="Empty = use PATH" /></label>
-              <div class="hint c6">Parallel jobs apply to custom/directory archives. Bin directory example: /usr/lib/postgresql/18/bin</div>
+              <div class="hint c4" style="align-self: end; padding-bottom: 8px">Applies to custom and directory archives.</div>
             </div>
           </details>
         </section>
 
+        <section class="card" data-panel="backup" hidden>
+          <div class="card-title">Backup</div>
+          <label class="field">
+            <span>Source database</span>
+            <div class="join">
+              <input type="text" name="bkDatabase" list="databases" placeholder="Pick from list" />
+              <button type="button" class="btn-outline btn-icon load-dbs" title="Load databases from server"><svg><use href="#i-refresh" /></svg></button>
+            </div>
+          </label>
+
+          <div class="field">
+            <span>Format</span>
+            <select name="bkFormat">
+              <option value="c">Custom (.dump) — compressed, restorable with pg_restore</option>
+              <option value="p">Plain SQL (.sql) — readable, restorable with psql</option>
+              <option value="t">Tar (.tar)</option>
+              <option value="d">Directory — parallel dump, needs an output path</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <span>Content</span>
+            <div class="seg">
+              <label><input type="radio" name="bkContent" value="all" checked />Schema + data</label>
+              <label><input type="radio" name="bkContent" value="schema" />Schema only</label>
+              <label><input type="radio" name="bkContent" value="data" />Data only</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Options</span>
+            <div class="options">
+              <label class="opt"><input type="checkbox" name="bkNoOwner" /><span class="txt"><b>Skip owner &amp; grants</b><small>--no-owner --no-privileges</small></span></label>
+              <label class="opt"><input type="checkbox" name="bkClean" /><span class="txt"><b>Include DROP statements</b><small>--clean --if-exists</small></span></label>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Save to</span>
+            <div class="hint" id="saveHint">You'll choose where to save when the backup starts.</div>
+            <input type="text" name="bkOutput" placeholder="…or type an absolute output path on this machine" />
+          </div>
+
+          <details id="bkAdvanced" hidden>
+            <summary><svg><use href="#i-chev" /></svg>Advanced</summary>
+            <div class="grid">
+              <label class="field c2"><span>Parallel jobs</span><input type="number" name="bkJobs" min="1" max="32" value="4" /></label>
+              <div class="hint c4" style="align-self: end; padding-bottom: 8px">Directory format only.</div>
+            </div>
+          </details>
+        </section>
+        <datalist id="databases"></datalist>
         </div>
+
         <div class="footer">
           <div class="msg" id="msg"></div>
           <div class="actions">
-          <button id="start" type="submit" class="btn-primary"><svg><use href="#i-play" /></svg><span id="startLabel">Restore</span></button>
+            <button id="start" type="submit" class="btn-primary"><svg><use href="#i-play" /></svg><span id="startLabel">Restore</span></button>
             <button id="cancel" type="button" class="btn-outline" disabled><svg><use href="#i-stop" /></svg>Cancel</button>
           </div>
         </div>
@@ -230,12 +304,13 @@
           <span class="pill" id="pill">Idle</span>
           <button id="clearLog" type="button" class="btn-ghost">Clear</button>
         </div>
-        <pre id="log"><div class="empty"><div><svg><use href="#i-term" /></svg><div>Restore output will appear here</div></div></div></pre>
+        <pre id="log"><div class="empty"><div><svg><use href="#i-term" /></svg><div>Output will appear here</div></div></div></pre>
       </section>
     </div>
 
     <script>
       const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => [...document.querySelectorAll(sel)];
       const form = $("#form");
       const log = $("#log");
       const msg = $("#msg");
@@ -247,22 +322,21 @@
       const CONN_FIELDS = ["host", "port", "user", "password", "binDir"];
       const CHUNK = 1024 * 1024;
       const MAX_LINES = 5000;
+      const EXT = { c: "dump", p: "sql", t: "tar" };
+      let mode = "restore";
       let offset = 0;
-      let timer = null;
       let picked = null; // fileTransfer handle chosen via Browse/drop
       let profiles = [];
       let errors = 0;
       let warnings = 0;
       let armed = false; // second click confirms a destructive reset
-
-      function disarm() {
-        armed = false;
-        $("#startLabel").textContent = form.resetDb.checked ? "Reset & Restore" : "Restore";
-        startBtn.classList.toggle("danger", form.resetDb.checked);
-      }
+      let cancelled = false;
+      let caps = {};
 
       const rpc = (method, params = {}) => plugin.invoke(method, params, { timeoutMs: 30000 });
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const mb = (bytes) => (bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(2)} GB` : `${(bytes / 1048576).toFixed(1)} MB`);
+      const canSave = () => Boolean(plugin.fileTransfer && caps.fileTransfer && caps.fileTransfer.beginSave);
 
       function setMsg(text, cls = "") {
         msg.textContent = text;
@@ -277,11 +351,35 @@
       function setRunning(running) {
         startBtn.disabled = running;
         cancelBtn.disabled = !running;
+        $$(".tab").forEach((t) => (t.disabled = running));
       }
 
       function connParams() {
-        return Object.fromEntries(CONN_FIELDS.map((k) => [k, form[k].value]));
+        return Object.fromEntries(CONN_FIELDS.map((k) => [k, form[k].value.trim()]));
       }
+
+      function missing(params, keys) {
+        const key = keys.find((k) => !String(params[k] ?? "").trim());
+        if (key) setMsg(`Please fill in ${key === "bkDatabase" ? "source database" : key}.`, "bad");
+        return Boolean(key);
+      }
+
+      // ---- tabs ----
+      function updateStartLabel() {
+        const reset = mode === "restore" && form.resetDb.checked;
+        $("#startLabel").textContent = mode === "backup" ? "Backup" : reset ? "Reset & Restore" : "Restore";
+        startBtn.classList.toggle("danger", reset);
+      }
+
+      function selectTab(name) {
+        mode = name;
+        $$(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === name)));
+        $$("[data-panel]").forEach((p) => (p.hidden = p.dataset.panel !== name));
+        armed = false;
+        setMsg("");
+        updateStartLabel();
+      }
+      $$(".tab").forEach((t) => t.addEventListener("click", () => selectTab(t.dataset.tab)));
 
       // ---- log ----
       function clearLog() {
@@ -333,7 +431,7 @@
         const p = profiles.find((x) => x.name === profileSel.value);
         if (!p) return;
         for (const k of CONN_FIELDS) form[k].value = p[k] ?? "";
-        if (p.database) form.database.value = p.database;
+        if (p.database) form.database.value = form.bkDatabase.value = p.database;
         $("#rememberPassword").checked = Boolean(p.password);
         if (p.password) loadDatabases();
       });
@@ -341,7 +439,7 @@
       $("#saveProfile").addEventListener("click", async () => {
         const fallback = `${form.user.value}@${form.host.value}:${form.port.value}`;
         const name = (profileSel.value || window.prompt?.("Connection name", fallback) || fallback).trim();
-        const entry = { name, ...connParams(), database: form.database.value };
+        const entry = { name, ...connParams(), database: (mode === "backup" ? form.bkDatabase : form.database).value };
         if (!$("#rememberPassword").checked) delete entry.password;
         profiles = [...profiles.filter((p) => p.name !== name), entry].sort((a, b) => a.name.localeCompare(b.name));
         try { await plugin.storage.set("profiles", profiles); renderProfiles(name); setMsg(`Saved "${name}"`, "ok"); }
@@ -356,26 +454,22 @@
         catch (error) { setMsg(error.message, "bad"); }
       });
 
-      // ---- database list ----
+      // ---- database list (shared by both tabs) ----
       async function loadDatabases() {
-        const btn = $("#loadDbs");
-        btn.disabled = true;
+        $$(".load-dbs").forEach((b) => (b.disabled = true));
         try {
           const { databases } = await rpc("db/list", connParams());
           $("#databases").replaceChildren(...databases.map((d) => new Option(d)));
-          setMsg(`${databases.length} databases on server — pick one or type a new name`, "ok");
-          form.database.focus();
+          setMsg(`${databases.length} databases on server — pick one from the list`, "ok");
         } catch (error) {
           setMsg(`Cannot list databases: ${error.message}`, "bad");
         } finally {
-          btn.disabled = false;
+          $$(".load-dbs").forEach((b) => (b.disabled = false));
         }
       }
-      $("#loadDbs").addEventListener("click", loadDatabases);
-      form.addEventListener("change", () => { if (armed) setMsg(""); disarm(); });
-      form.addEventListener("input", () => { if (armed) { setMsg(""); disarm(); } });
+      $$(".load-dbs").forEach((b) => b.addEventListener("click", loadDatabases));
 
-      // ---- file selection ----
+      // ---- restore file selection ----
       function showFile(name, sub) {
         $("#fileName").textContent = name;
         $("#fileSub").textContent = sub;
@@ -410,86 +504,187 @@
         await rpc("upload/begin", { name });
         let pos = 0;
         for (;;) {
+          if (cancelled) throw new Error("Cancelled");
           const chunk = await plugin.fileTransfer.read(handleId, pos, CHUNK);
           if (chunk.length) await rpc("upload/chunk", { dataBase64: chunk.dataBase64 });
           pos += chunk.length;
-          const pct = size ? Math.min(100, Math.round((pos / size) * 100)) : 0;
-          setPill("running", `Copying ${pct}%`);
+          setPill("running", `Copying ${size ? Math.min(100, Math.round((pos / size) * 100)) : 0}%`);
           if (chunk.eof || !chunk.length) break;
         }
         const { path } = await rpc("upload/finish");
         return path;
       }
 
-      // ---- restore ----
-      async function poll() {
-        try {
-          const s = await rpc("restore/status", { offset });
+      // ---- backup output ----
+      function updateBackupForm() {
+        const dir = form.bkFormat.value === "d";
+        $("#bkAdvanced").hidden = !dir;
+        $("#saveHint").textContent = dir
+          ? "Directory format writes many files — type an output directory path below."
+          : canSave()
+            ? "You'll choose where to save when the backup starts."
+            : "Type an absolute output path below.";
+      }
+      form.bkFormat.addEventListener("change", updateBackupForm);
+
+      function backupName(db, format) {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, "0");
+        const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+        return `${db}_${stamp}.${EXT[format]}`;
+      }
+
+      const toBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+      // Copies the finished temp backup into the user's save target, then removes the temp file.
+      async function streamToSave(path, target) {
+        const step = Math.min(target.chunkBytes || CHUNK, 4 * CHUNK);
+        let pos = 0;
+        for (;;) {
+          if (cancelled) throw new Error("Cancelled");
+          const chunk = await rpc("download/read", { path, offset: pos, length: step });
+          if (chunk.length) await plugin.fileTransfer.write(target.handleId, pos, toBytes(chunk.dataBase64).buffer);
+          pos += chunk.length;
+          setPill("running", `Saving ${chunk.size ? Math.min(100, Math.round((pos / chunk.size) * 100)) : 100}%`);
+          if (chunk.eof || !chunk.length) break;
+        }
+        await plugin.fileTransfer.finish(target.handleId);
+        return pos;
+      }
+
+      // ---- job lifecycle ----
+      async function waitForJob() {
+        for (;;) {
+          let s;
+          try {
+            s = await rpc("restore/status", { offset });
+          } catch (error) {
+            setMsg(`Status error: ${error.message}`, "bad");
+            await sleep(3000);
+            continue;
+          }
           if (s.log) appendLog(s.log);
           offset = s.offset;
-          setRunning(s.running);
-          if (s.running) {
-            setPill("running", "Running");
-            timer = setTimeout(poll, 1000);
-          } else if (s.exitCode === 0) {
-            setPill("done", "Completed");
-            setMsg(errors ? "Restore finished; some statements reported errors — review the output." : "Restore completed successfully.", "ok");
-          } else if (s.exitCode != null) {
-            // pg_restore exits 1 when it only hit ignorable errors (e.g. missing roles); check the log.
-            setPill("failed", `Exit ${s.exitCode}`);
-            setMsg("Restore finished with errors — review the highlighted lines.", "bad");
+          if (!s.running) return s.exitCode;
+          setPill("running", "Running");
+          await sleep(1000);
+        }
+      }
+
+      function report(code, what) {
+        if (code === 0) {
+          setPill("done", "Completed");
+          setMsg(errors ? `${what} finished; some statements reported errors — review the output.` : `${what} completed successfully.`, "ok");
+        } else if (code != null) {
+          // pg_restore exits 1 when it only hit ignorable errors (e.g. missing roles); check the log.
+          setPill("failed", `Exit ${code}`);
+          setMsg(`${what} finished with errors — review the highlighted lines.`, "bad");
+        }
+      }
+
+      async function beginRun() {
+        cancelled = false;
+        clearLog();
+        setRunning(true);
+        setMsg("");
+        setPill("running", "Starting");
+        offset = (await rpc("restore/status", { offset: Number.MAX_SAFE_INTEGER })).offset; // skip previous runs
+      }
+
+      async function runRestore() {
+        const params = {
+          ...connParams(),
+          database: form.database.value.trim(),
+          file: form.file.value.trim(),
+          jobs: Number(form.jobs.value) || 1,
+          createDb: form.createDb.checked,
+          clean: form.clean.checked,
+          noOwner: form.noOwner.checked,
+          resetDb: form.resetDb.checked,
+        };
+        if (missing(params, ["host", "port", "user", "database"])) return;
+        if (!picked && !params.file) { setMsg("Choose a dump file first.", "bad"); return; }
+        if (params.resetDb && !armed) {
+          armed = true;
+          $("#startLabel").textContent = "Confirm: wipe & restore";
+          setMsg(`All schemas and data in "${params.database}" on ${params.host}:${params.port} will be permanently dropped. Click again to confirm.`, "bad");
+          return;
+        }
+        armed = false;
+        updateStartLabel();
+        await beginRun();
+        if (picked) params.file = await uploadPicked();
+        await rpc("restore/start", params);
+        report(await waitForJob(), "Restore");
+      }
+
+      async function runBackup() {
+        const format = form.bkFormat.value;
+        const params = {
+          ...connParams(),
+          database: form.bkDatabase.value.trim(),
+          format,
+          content: form.bkContent.value,
+          noOwner: form.bkNoOwner.checked,
+          clean: form.bkClean.checked,
+          jobs: Number(form.bkJobs.value) || 1,
+          output: form.bkOutput.value.trim(),
+        };
+        if (missing(params, ["host", "port", "user", "database"])) return;
+        if (!params.output && (format === "d" || !canSave())) { setMsg("Type an output path for this backup.", "bad"); return; }
+
+        // Ask for the save location first, while this click still counts as a user gesture.
+        let target = null;
+        if (!params.output) {
+          params.name = backupName(params.database, format);
+          target = await plugin.fileTransfer.beginSave({ name: params.name, contentType: "application/octet-stream" });
+          if (!target) { setMsg("Backup cancelled."); return; }
+        }
+        let temp = null;
+        try {
+          await beginRun();
+          temp = (await rpc("backup/start", params)).path;
+          const code = await waitForJob();
+          if (code === 0 && target) {
+            const bytes = await streamToSave(temp, target);
+            target = null;
+            appendLog(`Saved ${params.name} (${mb(bytes)})\n`);
           }
-        } catch (error) {
-          setMsg(`Status error: ${error.message}`, "bad");
-          timer = setTimeout(poll, 3000);
+          report(code, "Backup");
+        } finally {
+          if (target) await plugin.fileTransfer.cancel(target.handleId).catch(() => {});
+          if (!params.output && temp) await rpc("download/delete", { path: temp }).catch(() => {});
         }
       }
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const data = Object.fromEntries(new FormData(form));
-        if (!picked && !data.file.trim()) { setMsg("Choose a dump file first.", "bad"); return; }
-        if (form.resetDb.checked && !armed) {
-          armed = true;
-          $("#startLabel").textContent = "Confirm: wipe & restore";
-          setMsg(`All schemas and data in "${data.database}" on ${data.host}:${data.port} will be permanently dropped. Click again to confirm.`, "bad");
-          return;
-        }
-        disarm();
-        clearTimeout(timer);
-        clearLog();
-        setRunning(true);
-        setMsg("");
-        setPill("running", "Starting");
         try {
-          const file = picked ? await uploadPicked() : data.file;
-          const s = await rpc("restore/status", { offset: Number.MAX_SAFE_INTEGER });
-          offset = s.offset; // skip output of previous runs
-          await rpc("restore/start", {
-            ...data,
-            file,
-            jobs: Number(data.jobs) || 1,
-            createDb: form.createDb.checked,
-            clean: form.clean.checked,
-            noOwner: form.noOwner.checked,
-            resetDb: form.resetDb.checked,
-          });
-          poll();
+          await (mode === "backup" ? runBackup() : runRestore());
         } catch (error) {
-          setRunning(false);
-          setPill("failed", "Failed");
+          setPill("failed", cancelled ? "Cancelled" : "Failed");
           setMsg(error.message, "bad");
+        } finally {
+          setRunning(false);
         }
       });
 
       cancelBtn.addEventListener("click", async () => {
+        cancelled = true;
         try { await rpc("restore/cancel"); }
         catch (error) { setMsg(error.message, "bad"); }
       });
 
+      // Any edit cancels a pending reset confirmation.
+      form.addEventListener("change", () => { if (armed) { armed = false; setMsg(""); } updateStartLabel(); });
+      form.addEventListener("input", () => { if (armed) { armed = false; setMsg(""); updateStartLabel(); } });
+
       function applyContext(ctx) {
         // Opened from a connection's context menu: { id, dbType, name, database }.
-        if (ctx && typeof ctx.database === "string" && ctx.database && !form.database.value) form.database.value = ctx.database;
+        if (ctx && typeof ctx.database === "string" && ctx.database) {
+          if (!form.database.value) form.database.value = ctx.database;
+          if (!form.bkDatabase.value) form.bkDatabase.value = ctx.database;
+        }
       }
 
       function applyTheme() {
@@ -499,7 +694,7 @@
       window.addEventListener("dbx-plugin-env", applyTheme);
 
       plugin.ready.then(async () => {
-        const caps = plugin.capabilities || {};
+        caps = plugin.capabilities || {};
         applyTheme();
         applyContext(plugin.context);
         plugin.onContext(applyContext);
@@ -507,11 +702,12 @@
         const ft = caps.fileTransfer;
         if (plugin.fileTransfer && ft && ft.pick && ft.read) $("#browse").hidden = false;
         if (plugin.fileTransfer && ft && ft.drop) {
-          plugin.fileTransfer.onDrop((files) => usePicked(files[0]));
+          plugin.fileTransfer.onDrop((files) => { selectTab("restore"); usePicked(files[0]); });
           plugin.fileTransfer.onDragState((active) => $("#drop").classList.toggle("active", active));
         } else if (!(ft && ft.pick)) {
           showFile("No file selected", "Type the absolute path of the dump below");
         }
+        updateBackupForm();
 
         if (caps.storage && plugin.storage) {
           $("#profileBox").hidden = false;
@@ -520,7 +716,16 @@
           catch (error) { setMsg(error.message, "bad"); }
         }
 
-        poll(); // reattach to a restore still running from a previous tab
+        // Reattach to a job still running from a previous tab.
+        const s = await rpc("restore/status", { offset: 0 }).catch(() => null);
+        if (s && s.running) {
+          setRunning(true);
+          report(await waitForJob(), "Job");
+          setRunning(false);
+        } else if (s && s.log) {
+          appendLog(s.log);
+          offset = s.offset;
+        }
       });
     </script>
   </body>

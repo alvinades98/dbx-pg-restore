@@ -2,11 +2,12 @@
   "$schema": "https://raw.githubusercontent.com/t8y2/dbx/plugin-sdk-v1/plugins/manifest.schema.json",
   "manifest_version": 1,
   "id": "marco.pg-restore",
-  "name": "PG Restore",
-  "version": "0.1.0",
+  "name": "PG Backup & Restore",
+  "version": "0.2.0",
   "publisher": "marco",
-  "description": "Restore PostgreSQL dumps (custom, tar, directory or plain SQL) using pg_restore / psql.",
+  "description": "Back up and restore PostgreSQL databases (custom, tar, directory or plain SQL) using pg_dump / pg_restore / psql.",
   "icon": "assets/plugin.svg",
+  "source": "https://github.com/alvinades98/dbx-pg-restore",
   "engines": {
     "dbx": ">=0.6.15",
     "host_api": "1"
@@ -27,14 +28,14 @@
     {
       "type": "workbench",
       "id": "marco.pg-restore.workbench",
-      "label": "PG Restore",
-      "description": "Restore a PostgreSQL dump file into a database.",
+      "label": "PG Backup & Restore",
+      "description": "Back up or restore a PostgreSQL database.",
       "icon": "assets/plugin.svg"
     },
     {
       "type": "context-menu",
       "id": "marco.pg-restore.open",
-      "label": "Restore PostgreSQL dump…",
+      "label": "Backup / restore PostgreSQL…",
       "menu": "connection",
       "action": {
         "type": "open-workbench",
@@ -44,14 +45,14 @@
   ],
   "localizations": {
     "id": {
-      "description": "Restore dump PostgreSQL (custom, tar, direktori, atau SQL biasa) memakai pg_restore / psql.",
+      "description": "Backup dan restore database PostgreSQL (custom, tar, direktori, atau SQL biasa) memakai pg_dump / pg_restore / psql.",
       "contributions": {
         "marco.pg-restore.workbench": {
-          "label": "PG Restore",
-          "description": "Restore file dump PostgreSQL ke database."
+          "label": "PG Backup & Restore",
+          "description": "Backup atau restore database PostgreSQL."
         },
         "marco.pg-restore.open": {
-          "label": "Restore dump PostgreSQL…"
+          "label": "Backup / restore PostgreSQL…"
         }
       }
     }
