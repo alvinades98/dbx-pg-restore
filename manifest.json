@@ -6,7 +6,7 @@
   "version": "0.2.0",
   "publisher": "alvinades98",
   "description": "Back up and restore PostgreSQL databases (custom, tar, directory or plain SQL) using pg_dump / pg_restore / psql.",
-  "icon": "assets/plugin.svg",
+  "icon": "assets/plugin.png",
   "source": "https://github.com/alvinades98/dbx-pg-restore",
   "engines": {
     "dbx": ">=0.6.15",
@@ -30,7 +30,7 @@
       "id": "alvinades98.pg-backup-restore.workbench",
       "label": "PG Backup & Restore",
       "description": "Back up or restore a PostgreSQL database.",
-      "icon": "assets/plugin.svg"
+      "icon": "assets/plugin.png"
     },
     {
       "type": "context-menu",
