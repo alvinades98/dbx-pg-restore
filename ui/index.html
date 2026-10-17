@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PG Restore</title>
+    <style>
+      /* DBX injects --color-* / --radius-* / --font-* tokens; fallbacks cover standalone preview. */
+      :root {
+        color-scheme: light dark;
+        --bg: var(--color-background, #fff);
+        --fg: var(--color-foreground, #18181b);
+        --muted: var(--color-muted-foreground, #71717a);
+        --surface: var(--color-card, #fff);
+        --subtle: var(--color-muted, #f4f4f5);
+        --border: var(--color-border, #e4e4e7);
+        --input: var(--color-input, var(--border));
+        --primary: var(--color-primary, #2563eb);
+        --primary-fg: var(--color-primary-foreground, #fff);
+        --danger: var(--color-destructive, #dc2626);
+        --success: #16a34a;
+        --warn: #d97706;
+        --radius: var(--radius-md, 8px);
+        font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif);
+        font-size: 13px;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--fg); }
+      .app { display: grid; grid-template-columns: minmax(360px, 520px) minmax(0, 1fr); gap: 16px; height: 100vh; padding: 16px; }
+      .side { display: flex; flex-direction: column; min-height: 0; }
+      .side-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 6px; scrollbar-gutter: stable; }
+
+      header { display: flex; align-items: center; gap: 10px; }
+      header .logo { width: 32px; height: 32px; border-radius: 8px; background: #336791; display: grid; place-items: center; color: #fff; flex: none; }
+      header h1 { margin: 0; font-size: 15px; font-weight: 650; }
+      header p { margin: 1px 0 0; color: var(--muted); font-size: 12px; }
+
+      .card { border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px); background: var(--surface); padding: 14px; display: grid; gap: 12px; }
+      .card-title { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+      .grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+      .c2 { grid-column: span 2; } .c3 { grid-column: span 3; } .c4 { grid-column: span 4; } .c6 { grid-column: span 6; }
+
+      .field { display: grid; gap: 5px; min-width: 0; }
+      .field > span { font-size: 12px; font-weight: 550; }
+      .hint { color: var(--muted); font-size: 11.5px; }
+      input, select { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--radius); background: var(--bg); color: var(--fg); font: inherit; outline: none; transition: border-color .12s, box-shadow .12s; }
+      input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
+      input::placeholder { color: var(--muted); }
+      .join { display: flex; gap: 6px; }
+      .join > :first-child { flex: 1; min-width: 0; }
+
+      button { height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius); font: inherit; font-weight: 550; cursor: pointer; white-space: nowrap; transition: filter .12s, background .12s; }
+      button svg { width: 15px; height: 15px; flex: none; }
+      button:disabled { opacity: .5; cursor: default; }
+      .btn-primary { background: var(--primary); color: var(--primary-fg); }
+      .btn-primary:not(:disabled):hover { filter: brightness(1.08); }
+      .btn-outline { background: var(--bg); color: var(--fg); border-color: var(--input); }
+      .btn-outline:not(:disabled):hover { background: var(--subtle); }
+      .btn-ghost { background: transparent; color: var(--muted); }
+      .btn-ghost:not(:disabled):hover { background: var(--subtle); color: var(--fg); }
+      .btn-icon { width: 32px; padding: 0; }
+      .btn-danger:not(:disabled):hover { color: var(--danger); }
+
+      .drop { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1.5px dashed var(--input); border-radius: var(--radius); background: color-mix(in srgb, var(--subtle) 60%, transparent); transition: border-color .12s, background .12s; }
+      .drop.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+      .drop .icon { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; background: var(--bg); border: 1px solid var(--border); color: var(--muted); flex: none; }
+      .drop .icon svg { width: 18px; height: 18px; }
+      .drop .meta { flex: 1; min-width: 0; }
+      .drop .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .drop .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+      .options { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+      .opt { display: flex; gap: 10px; align-items: center; padding: 9px 12px; cursor: pointer; transition: background .12s; }
+      .opt + .opt { border-top: 1px solid var(--border); }
+      .opt:hover { background: var(--subtle); }
+      .opt input { width: 15px; height: 15px; margin: 0; accent-color: var(--primary); flex: none; }
+      .opt .txt { flex: 1; min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+      .opt b { font-weight: 550; font-size: 12.5px; }
+      .opt small { color: var(--muted); font-size: 11.5px; font-family: var(--font-mono, ui-monospace, monospace); text-align: right; }
+      .opt.danger { background: color-mix(in srgb, var(--danger) 4%, transparent); }
+      .opt.danger input { accent-color: var(--danger); }
+      .opt.danger:has(input:checked) { background: color-mix(in srgb, var(--danger) 9%, transparent); }
+      .opt.danger:has(input:checked) b { color: var(--danger); }
+      .opt.danger .txt { display: block; }
+      .opt.danger small { display: block; margin-top: 2px; text-align: left; font-family: inherit; }
+      .check { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); cursor: pointer; }
+      .check input { width: 14px; height: 14px; margin: 0; accent-color: var(--primary); }
+      .btn-primary.danger { background: var(--danger); color: #fff; }
+
+      details { border-top: 1px solid var(--border); padding-top: 10px; }
+      summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 550; list-style: none; display: flex; align-items: center; gap: 6px; }
+      summary::-webkit-details-marker { display: none; }
+      summary svg { width: 14px; height: 14px; transition: transform .15s; }
+      details[open] summary svg { transform: rotate(90deg); }
+      details .grid { margin-top: 10px; }
+
+      /* Same gutter as .side-scroll so buttons line up with the cards above. */
+      .footer { flex: none; display: grid; gap: 8px; padding: 12px 6px 0 0; margin-top: 4px; border-top: 1px solid var(--border); overflow: hidden; scrollbar-gutter: stable; }
+      .actions { display: flex; gap: 8px; }
+      .actions .btn-primary { flex: 1; height: 36px; }
+      .actions button { height: 36px; }
+      .msg { font-size: 12px; line-height: 1.45; color: var(--muted); }
+      .msg:empty { display: none; }
+      .msg.ok { color: var(--success); } .msg.bad { color: var(--danger); }
+
+      .log-card { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px); background: var(--surface); overflow: hidden; }
+      .log-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--border); }
+      .log-head .card-title { flex: 1; }
+      .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--subtle); color: var(--muted); }
+      .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+      .pill.running { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+      .pill.running::before { animation: pulse 1s ease-in-out infinite; }
+      .pill.done { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+      .pill.failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+      @keyframes pulse { 50% { opacity: .3; } }
+      .counts { color: var(--muted); font-size: 11.5px; }
+      #log { flex: 1; margin: 0; overflow: auto; padding: 10px 14px; font: 12px/1.55 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre-wrap; word-break: break-word; background: color-mix(in srgb, var(--subtle) 45%, transparent); }
+      #log .cmd { color: var(--primary); font-weight: 600; }
+      #log .err { color: var(--danger); }
+      #log .warn { color: var(--warn); }
+      #log .fin { color: var(--success); font-weight: 600; }
+      #log .fin.bad { color: var(--danger); }
+      .empty { height: 100%; display: grid; place-items: center; text-align: center; color: var(--muted); font-family: var(--font-sans, system-ui, sans-serif); }
+      .empty svg { width: 28px; height: 28px; opacity: .6; }
+      [hidden] { display: none !important; }
+      @media (max-width: 900px) { .app { grid-template-columns: 1fr; height: auto; } .log-card { min-height: 420px; } }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position:absolute">
+      <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></symbol>
+      <symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+      <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+    </svg>
+
+    <div class="app">
+      <form id="form" class="side" autocomplete="off">
+        <div class="side-scroll">
+        <header>
+          <div class="logo"><svg width="18" height="18"><use href="#i-db" /></svg></div>
+          <div>
+            <h1>PG Restore</h1>
+            <p>Restore pg_dump archives (custom, tar, directory) or plain SQL</p>
+          </div>
+        </header>
+
+        <section class="card">
+          <div class="card-title">Connection</div>
+          <label class="field" id="profileBox" hidden>
+            <span>Saved connection</span>
+            <div class="join">
+              <select id="profile"><option value="">New connection…</option></select>
+              <button id="saveProfile" type="button" class="btn-outline btn-icon" title="Save connection"><svg><use href="#i-save" /></svg></button>
+              <button id="deleteProfile" type="button" class="btn-outline btn-icon btn-danger" title="Delete saved connection"><svg><use href="#i-trash" /></svg></button>
+            </div>
+          </label>
+          <div class="grid">
+            <label class="field c4"><span>Host</span><input type="text" name="host" value="localhost" required /></label>
+            <label class="field c2"><span>Port</span><input type="text" name="port" value="5432" inputmode="numeric" required /></label>
+            <label class="field c3"><span>User</span><input type="text" name="user" value="postgres" required /></label>
+            <label class="field c3"><span>Password</span><input type="password" name="password" /></label>
+          </div>
+          <label class="check" id="rememberBox" hidden><input type="checkbox" id="rememberPassword" />Remember password when saving this connection</label>
+        </section>
+
+        <section class="card">
+          <div class="card-title">Restore</div>
+          <label class="field">
+            <span>Target database</span>
+            <div class="join">
+              <input type="text" name="database" list="databases" placeholder="Pick from list or type a new name" required />
+              <button id="loadDbs" type="button" class="btn-outline btn-icon" title="Load databases from server"><svg><use href="#i-refresh" /></svg></button>
+            </div>
+            <datalist id="databases"></datalist>
+          </label>
+
+          <div class="field">
+            <span>Dump file</span>
+            <div class="drop" id="drop">
+              <div class="icon"><svg><use href="#i-file" /></svg></div>
+              <div class="meta">
+                <div class="name" id="fileName">No file selected</div>
+                <div class="sub" id="fileSub">Browse or drop a .dump / .sql / .tar file here</div>
+              </div>
+              <button id="browse" type="button" class="btn-outline" hidden>Browse…</button>
+            </div>
+            <input type="text" name="file" placeholder="…or type an absolute path (required for directory dumps)" />
+          </div>
+
+          <div class="field">
+            <span>Options</span>
+            <div class="options">
+              <label class="opt"><input type="checkbox" name="createDb" /><span class="txt"><b>Create database first</b><small>createdb</small></span></label>
+              <label class="opt"><input type="checkbox" name="noOwner" checked /><span class="txt"><b>Skip owner &amp; grants</b><small>--no-owner --no-privileges</small></span></label>
+              <label class="opt"><input type="checkbox" name="clean" /><span class="txt"><b>Drop objects in the dump first</b><small>--clean --if-exists</small></span></label>
+              <label class="opt danger"><input type="checkbox" name="resetDb" /><span class="txt"><b>Reset database</b><small>Drops ALL schemas (incl. public, CASCADE), recreates an empty public, then restores</small></span></label>
+            </div>
+          </div>
+
+          <details>
+            <summary><svg><use href="#i-chev" /></svg>Advanced</summary>
+            <div class="grid">
+              <label class="field c2"><span>Parallel jobs</span><input type="number" name="jobs" min="1" max="32" value="1" /></label>
+              <label class="field c4"><span>PostgreSQL bin directory</span><input type="text" name="binDir" placeholder="Empty = use PATH" /></label>
+              <div class="hint c6">Parallel jobs apply to custom/directory archives. Bin directory example: /usr/lib/postgresql/18/bin</div>
+            </div>
+          </details>
+        </section>
+
+        </div>
+        <div class="footer">
+          <div class="msg" id="msg"></div>
+          <div class="actions">
+          <button id="start" type="submit" class="btn-primary"><svg><use href="#i-play" /></svg><span id="startLabel">Restore</span></button>
+            <button id="cancel" type="button" class="btn-outline" disabled><svg><use href="#i-stop" /></svg>Cancel</button>
+          </div>
+        </div>
+      </form>
+
+      <section class="log-card">
+        <div class="log-head">
+          <div class="card-title"><svg width="14" height="14"><use href="#i-term" /></svg>Output</div>
+          <span class="counts" id="counts"></span>
+          <span class="pill" id="pill">Idle</span>
+          <button id="clearLog" type="button" class="btn-ghost">Clear</button>
+        </div>
+        <pre id="log"><div class="empty"><div><svg><use href="#i-term" /></svg><div>Restore output will appear here</div></div></div></pre>
+      </section>
+    </div>
+
+    <script>
+      const $ = (sel) => document.querySelector(sel);
+      const form = $("#form");
+      const log = $("#log");
+      const msg = $("#msg");
+      const pill = $("#pill");
+      const startBtn = $("#start");
+      const cancelBtn = $("#cancel");
+      const profileSel = $("#profile");
+      const plugin = window.dbxPlugin;
+      const CONN_FIELDS = ["host", "port", "user", "password", "binDir"];
+      const CHUNK = 1024 * 1024;
+      const MAX_LINES = 5000;
+      let offset = 0;
+      let timer = null;
+      let picked = null; // fileTransfer handle chosen via Browse/drop
+      let profiles = [];
+      let errors = 0;
+      let warnings = 0;
+      let armed = false; // second click confirms a destructive reset
+
+      function disarm() {
+        armed = false;
+        $("#startLabel").textContent = form.resetDb.checked ? "Reset & Restore" : "Restore";
+        startBtn.classList.toggle("danger", form.resetDb.checked);
+      }
+
+      const rpc = (method, params = {}) => plugin.invoke(method, params, { timeoutMs: 30000 });
+      const mb = (bytes) => (bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(2)} GB` : `${(bytes / 1048576).toFixed(1)} MB`);
+
+      function setMsg(text, cls = "") {
+        msg.textContent = text;
+        msg.className = `msg ${cls}`;
+      }
+
+      function setPill(state, text) {
+        pill.className = `pill ${state}`;
+        pill.textContent = text;
+      }
+
+      function setRunning(running) {
+        startBtn.disabled = running;
+        cancelBtn.disabled = !running;
+      }
+
+      function connParams() {
+        return Object.fromEntries(CONN_FIELDS.map((k) => [k, form[k].value]));
+      }
+
+      // ---- log ----
+      function clearLog() {
+        log.textContent = "";
+        errors = warnings = 0;
+        $("#counts").textContent = "";
+      }
+
+      function classify(line) {
+        if (line.startsWith("$ ")) return "cmd";
+        if (line.startsWith("Finished with exit code")) return line.endsWith(" 0") ? "fin" : "fin bad";
+        if (/\b(error|fatal)\b/i.test(line)) { errors++; return "err"; }
+        if (/\bwarning\b/i.test(line)) { warnings++; return "warn"; }
+        return "";
+      }
+
+      function appendLog(text) {
+        if (log.querySelector(".empty")) log.textContent = "";
+        const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+        const frag = document.createDocumentFragment();
+        for (const line of text.replace(/\n$/, "").split("\n")) {
+          const cls = classify(line);
+          if (cls) {
+            const span = document.createElement("span");
+            span.className = cls;
+            span.textContent = `${line}\n`;
+            frag.append(span);
+          } else {
+            frag.append(`${line}\n`);
+          }
+        }
+        log.append(frag);
+        while (log.childNodes.length > MAX_LINES) log.firstChild.remove();
+        const parts = [];
+        if (errors) parts.push(`${errors} error${errors > 1 ? "s" : ""}`);
+        if (warnings) parts.push(`${warnings} warning${warnings > 1 ? "s" : ""}`);
+        $("#counts").textContent = parts.join(" · ");
+        if (atBottom) log.scrollTop = log.scrollHeight;
+      }
+      $("#clearLog").addEventListener("click", clearLog);
+
+      // ---- saved connections (plugin storage; DBX never shares its own credentials with plugins) ----
+      function renderProfiles(selected = "") {
+        profileSel.length = 1;
+        for (const p of profiles) profileSel.add(new Option(p.name, p.name, false, p.name === selected));
+      }
+
+      profileSel.addEventListener("change", () => {
+        const p = profiles.find((x) => x.name === profileSel.value);
+        if (!p) return;
+        for (const k of CONN_FIELDS) form[k].value = p[k] ?? "";
+        if (p.database) form.database.value = p.database;
+        $("#rememberPassword").checked = Boolean(p.password);
+        if (p.password) loadDatabases();
+      });
+
+      $("#saveProfile").addEventListener("click", async () => {
+        const fallback = `${form.user.value}@${form.host.value}:${form.port.value}`;
+        const name = (profileSel.value || window.prompt?.("Connection name", fallback) || fallback).trim();
+        const entry = { name, ...connParams(), database: form.database.value };
+        if (!$("#rememberPassword").checked) delete entry.password;
+        profiles = [...profiles.filter((p) => p.name !== name), entry].sort((a, b) => a.name.localeCompare(b.name));
+        try { await plugin.storage.set("profiles", profiles); renderProfiles(name); setMsg(`Saved "${name}"`, "ok"); }
+        catch (error) { setMsg(error.message, "bad"); }
+      });
+
+      $("#deleteProfile").addEventListener("click", async () => {
+        if (!profileSel.value) return;
+        const name = profileSel.value;
+        profiles = profiles.filter((p) => p.name !== name);
+        try { await plugin.storage.set("profiles", profiles); renderProfiles(); setMsg(`Deleted "${name}"`); }
+        catch (error) { setMsg(error.message, "bad"); }
+      });
+
+      // ---- database list ----
+      async function loadDatabases() {
+        const btn = $("#loadDbs");
+        btn.disabled = true;
+        try {
+          const { databases } = await rpc("db/list", connParams());
+          $("#databases").replaceChildren(...databases.map((d) => new Option(d)));
+          setMsg(`${databases.length} databases on server — pick one or type a new name`, "ok");
+          form.database.focus();
+        } catch (error) {
+          setMsg(`Cannot list databases: ${error.message}`, "bad");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+      $("#loadDbs").addEventListener("click", loadDatabases);
+      form.addEventListener("change", () => { if (armed) setMsg(""); disarm(); });
+      form.addEventListener("input", () => { if (armed) { setMsg(""); disarm(); } });
+
+      // ---- file selection ----
+      function showFile(name, sub) {
+        $("#fileName").textContent = name;
+        $("#fileSub").textContent = sub;
+      }
+
+      function usePicked(file) {
+        if (!file) return;
+        picked = file;
+        form.file.value = "";
+        showFile(file.name, `${mb(file.size)} · will be copied to a temp file, then restored`);
+      }
+
+      form.file.addEventListener("input", () => {
+        picked = null;
+        const path = form.file.value.trim();
+        if (path) showFile(path.split(/[\\/]/).filter(Boolean).pop() || path, "Path on this machine");
+        else showFile("No file selected", "Browse or drop a .dump / .sql / .tar file here");
+      });
+
+      $("#browse").addEventListener("click", async () => {
+        try {
+          const { files } = await plugin.fileTransfer.pick({ multiple: false });
+          usePicked(files && files[0]);
+        } catch (error) {
+          setMsg(error.message, "bad");
+        }
+      });
+
+      // Streams the picked file to the sidecar's temp dir; returns the path to restore from.
+      async function uploadPicked() {
+        const { handleId, name, size } = picked;
+        await rpc("upload/begin", { name });
+        let pos = 0;
+        for (;;) {
+          const chunk = await plugin.fileTransfer.read(handleId, pos, CHUNK);
+          if (chunk.length) await rpc("upload/chunk", { dataBase64: chunk.dataBase64 });
+          pos += chunk.length;
+          const pct = size ? Math.min(100, Math.round((pos / size) * 100)) : 0;
+          setPill("running", `Copying ${pct}%`);
+          if (chunk.eof || !chunk.length) break;
+        }
+        const { path } = await rpc("upload/finish");
+        return path;
+      }
+
+      // ---- restore ----
+      async function poll() {
+        try {
+          const s = await rpc("restore/status", { offset });
+          if (s.log) appendLog(s.log);
+          offset = s.offset;
+          setRunning(s.running);
+          if (s.running) {
+            setPill("running", "Running");
+            timer = setTimeout(poll, 1000);
+          } else if (s.exitCode === 0) {
+            setPill("done", "Completed");
+            setMsg(errors ? "Restore finished; some statements reported errors — review the output." : "Restore completed successfully.", "ok");
+          } else if (s.exitCode != null) {
+            // pg_restore exits 1 when it only hit ignorable errors (e.g. missing roles); check the log.
+            setPill("failed", `Exit ${s.exitCode}`);
+            setMsg("Restore finished with errors — review the highlighted lines.", "bad");
+          }
+        } catch (error) {
+          setMsg(`Status error: ${error.message}`, "bad");
+          timer = setTimeout(poll, 3000);
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(form));
+        if (!picked && !data.file.trim()) { setMsg("Choose a dump file first.", "bad"); return; }
+        if (form.resetDb.checked && !armed) {
+          armed = true;
+          $("#startLabel").textContent = "Confirm: wipe & restore";
+          setMsg(`All schemas and data in "${data.database}" on ${data.host}:${data.port} will be permanently dropped. Click again to confirm.`, "bad");
+          return;
+        }
+        disarm();
+        clearTimeout(timer);
+        clearLog();
+        setRunning(true);
+        setMsg("");
+        setPill("running", "Starting");
+        try {
+          const file = picked ? await uploadPicked() : data.file;
+          const s = await rpc("restore/status", { offset: Number.MAX_SAFE_INTEGER });
+          offset = s.offset; // skip output of previous runs
+          await rpc("restore/start", {
+            ...data,
+            file,
+            jobs: Number(data.jobs) || 1,
+            createDb: form.createDb.checked,
+            clean: form.clean.checked,
+            noOwner: form.noOwner.checked,
+            resetDb: form.resetDb.checked,
+          });
+          poll();
+        } catch (error) {
+          setRunning(false);
+          setPill("failed", "Failed");
+          setMsg(error.message, "bad");
+        }
+      });
+
+      cancelBtn.addEventListener("click", async () => {
+        try { await rpc("restore/cancel"); }
+        catch (error) { setMsg(error.message, "bad"); }
+      });
+
+      function applyContext(ctx) {
+        // Opened from a connection's context menu: { id, dbType, name, database }.
+        if (ctx && typeof ctx.database === "string" && ctx.database && !form.database.value) form.database.value = ctx.database;
+      }
+
+      function applyTheme() {
+        const appearance = plugin.theme && plugin.theme.appearance;
+        if (appearance) document.documentElement.style.colorScheme = appearance;
+      }
+      window.addEventListener("dbx-plugin-env", applyTheme);
+
+      plugin.ready.then(async () => {
+        const caps = plugin.capabilities || {};
+        applyTheme();
+        applyContext(plugin.context);
+        plugin.onContext(applyContext);
+
+        const ft = caps.fileTransfer;
+        if (plugin.fileTransfer && ft && ft.pick && ft.read) $("#browse").hidden = false;
+        if (plugin.fileTransfer && ft && ft.drop) {
+          plugin.fileTransfer.onDrop((files) => usePicked(files[0]));
+          plugin.fileTransfer.onDragState((active) => $("#drop").classList.toggle("active", active));
+        } else if (!(ft && ft.pick)) {
+          showFile("No file selected", "Type the absolute path of the dump below");
+        }
+
+        if (caps.storage && plugin.storage) {
+          $("#profileBox").hidden = false;
+          $("#rememberBox").hidden = false;
+          try { profiles = (await plugin.storage.get("profiles")) || []; renderProfiles(); }
+          catch (error) { setMsg(error.message, "bad"); }
+        }
+
+        poll(); // reattach to a restore still running from a previous tab
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+[package]
+name = "dbx-pg-restore"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace]
+
+[dependencies]
+# Not on crates.io: `dbx-plugin package` / `dbx-plugin dev` patch this to the SDK bundled with the CLI.
+dbx-plugin-sdk = { version = "0.1.0" }
+serde_json = "1"
+base64 = "0.22"
+
+# panic stays "unwind" so the sidecar protocol can report panics as errors.
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

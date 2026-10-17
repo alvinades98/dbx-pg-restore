@@ -1,0 +1,59 @@
+{
+  "$schema": "https://raw.githubusercontent.com/t8y2/dbx/plugin-sdk-v1/plugins/manifest.schema.json",
+  "manifest_version": 1,
+  "id": "marco.pg-restore",
+  "name": "PG Restore",
+  "version": "0.1.0",
+  "publisher": "marco",
+  "description": "Restore PostgreSQL dumps (custom, tar, directory or plain SQL) using pg_restore / psql.",
+  "icon": "assets/plugin.svg",
+  "engines": {
+    "dbx": ">=0.6.15",
+    "host_api": "1"
+  },
+  "permissions": [
+    "host.storage"
+  ],
+  "entrypoints": {
+    "backend": {
+      "executable": "bin/dbx-pg-restore"
+    },
+    "ui": {
+      "root": "ui",
+      "entry": "ui/index.html"
+    }
+  },
+  "contributions": [
+    {
+      "type": "workbench",
+      "id": "marco.pg-restore.workbench",
+      "label": "PG Restore",
+      "description": "Restore a PostgreSQL dump file into a database.",
+      "icon": "assets/plugin.svg"
+    },
+    {
+      "type": "context-menu",
+      "id": "marco.pg-restore.open",
+      "label": "Restore PostgreSQL dump…",
+      "menu": "connection",
+      "action": {
+        "type": "open-workbench",
+        "workbench": "marco.pg-restore.workbench"
+      }
+    }
+  ],
+  "localizations": {
+    "id": {
+      "description": "Restore dump PostgreSQL (custom, tar, direktori, atau SQL biasa) memakai pg_restore / psql.",
+      "contributions": {
+        "marco.pg-restore.workbench": {
+          "label": "PG Restore",
+          "description": "Restore file dump PostgreSQL ke database."
+        },
+        "marco.pg-restore.open": {
+          "label": "Restore dump PostgreSQL…"
+        }
+      }
+    }
+  }
+}
