@@ -1,3 +1,5 @@
+mod toc;
+
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -107,6 +109,103 @@ fn tool(bin_dir: &str, name: &str) -> PathBuf {
     if bin_dir.is_empty() { PathBuf::from(exe) } else { Path::new(bin_dir).join(exe) }
 }
 
+/// Leading major version of "18.6", "17.2 (Debian ...)" or "9.6.24".
+fn major(version: &str) -> Option<u32> {
+    version.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
+}
+
+/// Version reported by `<tool> --version`, e.g. "18.6" from "pg_dump (PostgreSQL) 18.6".
+fn tool_version(bin_dir: &str, name: &str) -> Option<String> {
+    let out = Command::new(tool(bin_dir, name)).arg("--version").stdin(Stdio::null()).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    out.status.success().then(|| text.split_whitespace().find(|w| w.starts_with(|c: char| c.is_ascii_digit())).map(String::from))?
+}
+
+/// pg_dump pattern matching exactly `name` (quoted, so case and wildcards are taken literally).
+fn quote_pattern(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+/// `-Z` values pg_dump accepts: a level 0-9, or gzip/lz4/zstd with an optional ":level".
+fn valid_compress(value: &str) -> bool {
+    let (method, level) = match value.split_once(':') {
+        Some((m, l)) => (m, Some(l)),
+        None => (value, None),
+    };
+    let level_ok = level.map_or(true, |l| (1..=2).contains(&l.len()) && l.chars().all(|c| c.is_ascii_digit()));
+    match method {
+        "gzip" | "lz4" | "zstd" => level_ok,
+        m => level.is_none() && m.len() == 1 && m.chars().all(|c| c.is_ascii_digit()),
+    }
+}
+
+fn string_list(params: &Value, key: &str) -> Vec<String> {
+    params.get(key).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(String::from).collect()
+}
+
+/// `[[schema, table], ...]` pairs.
+fn pair_list(params: &Value, key: &str) -> Vec<(String, String)> {
+    params.get(key).and_then(Value::as_array).into_iter().flatten()
+        .filter_map(|p| Some((p.get(0)?.as_str()?.to_string(), p.get(1)?.as_str()?.to_string())))
+        .collect()
+}
+
+/// Creates each missing role as NOLOGIN so owner/ACL statements in the dump find it.
+fn roles_sql(roles: &[String]) -> Option<String> {
+    let literals: Vec<String> = roles.iter()
+        .filter(|r| !r.is_empty() && !r.contains('$') && !r.contains('\0'))
+        .map(|r| format!("'{}'", r.replace('\'', "''")))
+        .collect();
+    (!literals.is_empty()).then(|| format!(
+        "DO $pgr$ DECLARE r text; BEGIN FOREACH r IN ARRAY ARRAY[{}]::text[] LOOP \
+         IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = r) THEN \
+         EXECUTE format('CREATE ROLE %I NOLOGIN', r); RAISE NOTICE 'created role %', r; END IF; END LOOP; END $pgr$;",
+        literals.join(", ")
+    ))
+}
+
+fn read_toc(params: &Value, file: &str) -> Result<toc::Toc, PluginError> {
+    let out = Command::new(tool(str_param(params, "binDir"), "pg_restore"))
+        .arg("-l").arg(file).stdin(Stdio::null()).output()
+        .map_err(|err| PluginError::new(-32000, format!("Failed to start pg_restore: {err}")))?;
+    if !out.status.success() {
+        return Err(PluginError::new(-32000, String::from_utf8_lossy(&out.stderr).trim().to_string()));
+    }
+    Ok(toc::parse(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Header lines of a plain SQL dump: "-- Dumped from database version 14.2" / "-- Dumped by pg_dump version 18.6".
+fn plain_header(path: &Path) -> (Option<String>, Option<String>) {
+    let mut head = Vec::new();
+    if let Ok(file) = File::open(path) {
+        let _ = file.take(64 * 1024).read_to_end(&mut head);
+    }
+    let text = String::from_utf8_lossy(&head);
+    let find = |prefix: &str| text.lines().find_map(|l| l.strip_prefix(prefix)).map(|v| v.trim().to_string());
+    (find("-- Dumped by pg_dump version "), find("-- Dumped from database version "))
+}
+
+fn query_lines(params: &Value, database: &str, sql: &str) -> Result<Vec<String>, PluginError> {
+    let mut cmd = base_command(params, "psql");
+    cmd.arg("-d").arg(database).arg("-AtX").arg("-F").arg("\t").arg("-c").arg(sql);
+    let out = cmd.output().map_err(|err| PluginError::new(-32000, format!("Failed to start psql: {err}")))?;
+    if !out.status.success() {
+        return Err(PluginError::new(-32000, String::from_utf8_lossy(&out.stderr).trim().to_string()));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).lines().filter(|l| !l.is_empty()).map(String::from).collect())
+}
+
+/// Removes temp files a crashed or closed session left behind.
+fn cleanup_temp_dir() {
+    let day = Duration::from_secs(24 * 3600);
+    for entry in std::fs::read_dir(upload_dir()).into_iter().flatten().flatten() {
+        let old = entry.metadata().and_then(|m| m.modified()).map(|t| t.elapsed().unwrap_or_default() > day).unwrap_or(false);
+        if old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 fn base_command(params: &Value, name: &str) -> Command {
     let mut cmd = Command::new(tool(str_param(params, "binDir"), name));
     cmd.arg("-h").arg(str_param(params, "host"))
@@ -121,7 +220,7 @@ fn base_command(params: &Value, name: &str) -> Command {
     cmd
 }
 
-fn build_restore(params: &Value, format: &Format, file: &str) -> Command {
+fn build_restore(params: &Value, format: &Format, file: &str, list: Option<&Path>) -> Command {
     let database = str_param(params, "database");
     match format {
         Format::Archive => {
@@ -135,6 +234,9 @@ fn build_restore(params: &Value, format: &Format, file: &str) -> Command {
             }
             if let Some(jobs) = params.get("jobs").and_then(Value::as_u64).filter(|j| *j > 1) {
                 cmd.arg("-j").arg(jobs.to_string());
+            }
+            if let Some(list) = list {
+                cmd.arg("-L").arg(list);
             }
             cmd.arg(file);
             cmd
@@ -160,6 +262,14 @@ fn build_reset(params: &Value) -> Command {
 }
 
 fn build_backup(params: &Value, output: &Path) -> Command {
+    if str_param(params, "content") == "roles" {
+        let mut cmd = base_command(params, "pg_dumpall");
+        cmd.arg("-l").arg(str_param(params, "database")).arg("--globals-only").arg("-f").arg(output).arg("--verbose");
+        if bool_param(params, "noRolePasswords") {
+            cmd.arg("--no-role-passwords");
+        }
+        return cmd;
+    }
     let format = str_param(params, "format");
     let mut cmd = base_command(params, "pg_dump");
     cmd.arg("-d").arg(str_param(params, "database")).arg("-F").arg(format).arg("-f").arg(output).arg("--verbose");
@@ -176,6 +286,16 @@ fn build_backup(params: &Value, output: &Path) -> Command {
     }
     if let Some(jobs) = params.get("jobs").and_then(Value::as_u64).filter(|j| *j > 1 && format == "d") {
         cmd.arg("-j").arg(jobs.to_string());
+    }
+    for schema in string_list(params, "schemas") {
+        cmd.arg("-n").arg(quote_pattern(&schema));
+    }
+    for (schema, table) in pair_list(params, "excludeData") {
+        cmd.arg("--exclude-table-data").arg(format!("{}.{}", quote_pattern(&schema), quote_pattern(&table)));
+    }
+    let compress = str_param(params, "compress");
+    if !compress.is_empty() && matches!(format, "c" | "d") && valid_compress(compress) {
+        cmd.arg("-Z").arg(compress);
     }
     cmd
 }
@@ -249,9 +369,39 @@ impl Plugin {
         let format = detect_format(Path::new(&file))
             .map_err(|err| PluginError::new(-32602, format!("Cannot read {file}: {err}")))?;
 
+        // Archives: read the TOC up front, so a pg_restore that cannot read the dump fails before anything runs,
+        // the UI gets an item count for progress, and a selection can be written as a `-L` list.
+        let mut items = None;
+        let mut list = None;
+        let mut roles = Vec::new();
+        if format == Format::Archive {
+            let toc = read_toc(&params, &file)?;
+            let schemas = string_list(&params, "schemas");
+            let selection = toc::Selection {
+                schemas: params.get("schemas").filter(|v| v.is_array()).map(|_| schemas.into_iter().collect()),
+                skip_data: pair_list(&params, "skipData").into_iter().collect(),
+            };
+            let kept = selection.select(&toc);
+            items = Some(kept.len());
+            if bool_param(&params, "createRoles") {
+                roles = toc::owners(kept.iter().copied()).into_iter().collect();
+            }
+            if !selection.is_everything() {
+                let path = temp_path("selection.list")?;
+                let body: String = kept.iter().map(|e| format!("{}\n", e.line)).collect();
+                std::fs::write(&path, body).map_err(|err| PluginError::new(-32000, format!("Cannot write list file: {err}")))?;
+                list = Some(path);
+            }
+        }
+
         self.begin_job(&format!(
-            "Detected format: {}",
-            if format == Format::Archive { "pg_dump archive -> pg_restore" } else { "plain SQL -> psql" }
+            "Detected format: {}{}",
+            if format == Format::Archive { "pg_dump archive -> pg_restore" } else { "plain SQL -> psql" },
+            match (&items, &list) {
+                (Some(n), Some(_)) => format!(" ({n} selected items)"),
+                (Some(n), None) => format!(" ({n} items)"),
+                _ => String::new(),
+            }
         ))?;
 
         let shared = self.job.clone();
@@ -263,6 +413,14 @@ impl Plugin {
                     lock(&shared).push("createdb failed (database may already exist), continuing...");
                 }
             }
+            if let Some(sql) = roles_sql(&roles).filter(|_| lock(&shared).running) {
+                lock(&shared).push(&format!("Creating missing roles as NOLOGIN: {}", roles.join(", ")));
+                let mut cmd = base_command(&params, "psql");
+                cmd.arg("-d").arg(str_param(&params, "database")).arg("-v").arg("ON_ERROR_STOP=1").arg("-c").arg(sql);
+                if run_step(&shared, cmd) != 0 {
+                    lock(&shared).push("warning: could not create roles (needs CREATEROLE), continuing...");
+                }
+            }
             let mut code = 0;
             if bool_param(&params, "resetDb") && lock(&shared).running {
                 lock(&shared).push("Resetting database: dropping all schemas, recreating empty public...");
@@ -272,14 +430,21 @@ impl Plugin {
                 }
             }
             if code == 0 {
-                code = if lock(&shared).running { run_step(&shared, build_restore(&params, &format, &file)) } else { -1 };
+                code = if lock(&shared).running {
+                    run_step(&shared, build_restore(&params, &format, &file, list.as_deref()))
+                } else {
+                    -1
+                };
+            }
+            if let Some(list) = list {
+                let _ = std::fs::remove_file(list);
             }
             if Path::new(&file).starts_with(upload_dir()) {
                 let _ = std::fs::remove_file(&file);
             }
             finish_job(&shared, code);
         });
-        Ok(json!({ "started": true }))
+        Ok(json!({ "started": true, "items": items }))
     }
 
     /// Resets the shared job for a new run; only one restore or backup runs at a time.
@@ -300,9 +465,13 @@ impl Plugin {
                 return Err(PluginError::new(-32602, format!("Field '{key}' is required")));
             }
         }
-        let format = str_param(&params, "format");
+        let roles = str_param(&params, "content") == "roles";
+        let format = if roles { "p" } else { str_param(&params, "format") };
         if !["c", "p", "t", "d"].contains(&format) {
             return Err(PluginError::new(-32602, "Format must be one of c, p, t, d"));
+        }
+        if !valid_compress(str_param(&params, "compress")) && !str_param(&params, "compress").is_empty() {
+            return Err(PluginError::new(-32602, "Invalid compression"));
         }
         // Explicit path: pg_dump writes there directly. Otherwise a temp file the UI streams to the user's save target.
         let output = match str_param(&params, "output") {
@@ -310,7 +479,11 @@ impl Plugin {
             "" => temp_path(str_param(&params, "name"))?,
             path => PathBuf::from(path),
         };
-        self.begin_job(&format!("Backing up \"{}\" to {}", str_param(&params, "database"), output.display()))?;
+        self.begin_job(&if roles {
+            format!("Backing up roles and tablespaces (pg_dumpall --globals-only) to {}", output.display())
+        } else {
+            format!("Backing up \"{}\" to {}", str_param(&params, "database"), output.display())
+        })?;
         let shared = self.job.clone();
         let out = output.clone();
         thread::spawn(move || {
@@ -406,6 +579,66 @@ impl Plugin {
         Ok(json!({ "databases": names }))
     }
 
+    /// Server and client tool versions, so the UI can stop an incompatible run before it starts.
+    fn check_tools(&self, params: Value) -> Value {
+        let bin_dir = str_param(&params, "binDir");
+        let tools: serde_json::Map<String, Value> = ["pg_dump", "pg_restore", "psql", "pg_dumpall", "createdb"]
+            .iter()
+            .map(|name| {
+                let version = tool_version(bin_dir, name);
+                let major = version.as_deref().and_then(major);
+                (name.to_string(), json!({ "version": version, "major": major }))
+            })
+            .collect();
+        let database = Some(str_param(&params, "database")).filter(|d| !d.is_empty()).unwrap_or("postgres");
+        let server = query_lines(&params, database, "show server_version").map(|lines| lines.into_iter().next().unwrap_or_default());
+        match server {
+            Ok(version) => json!({ "tools": tools, "server": { "version": version, "major": major(&version) } }),
+            Err(err) => json!({ "tools": tools, "server": null, "serverError": err.message }),
+        }
+    }
+
+    /// Format, pg_dump/server versions and (for archives) the schema/table tree and owners of a dump file.
+    fn inspect_dump(&self, params: Value) -> Result<Value, PluginError> {
+        let file = str_param(&params, "path");
+        let path = Path::new(file);
+        let format = detect_format(path).map_err(|err| PluginError::new(-32602, format!("Cannot read {file}: {err}")))?;
+        if format == Format::Plain {
+            let (dumped_by, dumped_from) = plain_header(path);
+            return Ok(json!({ "format": "plain", "dumpedBy": dumped_by, "dumpedFrom": dumped_from }));
+        }
+        let toc = read_toc(&params, file)?;
+        let schemas: Vec<Value> = toc::schemas(&toc).into_iter().map(|(name, tables)| json!({ "name": name, "tables": tables })).collect();
+        Ok(json!({
+            "format": "archive",
+            "dumpedBy": toc.dumped_by,
+            "dumpedFrom": toc.dumped_from,
+            "items": toc.entries.len(),
+            "schemas": schemas,
+            "owners": toc::owners(toc.entries.iter()),
+        }))
+    }
+
+    /// User schemas with their tables and total sizes, for choosing what a backup includes.
+    fn list_objects(&self, params: Value) -> Result<Value, PluginError> {
+        let sql = "SELECT n.nspname, coalesce(c.relname, ''), coalesce(pg_total_relation_size(c.oid), 0) \
+                   FROM pg_namespace n LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relkind IN ('r', 'p') \
+                   WHERE n.nspname <> 'information_schema' AND n.nspname NOT LIKE 'pg\\_%' ORDER BY 1, 2";
+        let mut schemas: Vec<Value> = Vec::new();
+        for line in query_lines(&params, str_param(&params, "database"), sql)? {
+            let mut cols = line.split('\t');
+            let (Some(schema), Some(table), Some(size)) = (cols.next(), cols.next(), cols.next()) else { continue };
+            if schemas.last().and_then(|s| s["name"].as_str()) != Some(schema) {
+                schemas.push(json!({ "name": schema, "tables": [] }));
+            }
+            if !table.is_empty() {
+                let size: u64 = size.parse().unwrap_or(0);
+                schemas.last_mut().unwrap()["tables"].as_array_mut().unwrap().push(json!({ "name": table, "size": size }));
+            }
+        }
+        Ok(json!({ "schemas": schemas }))
+    }
+
     fn cancel(&self) -> Value {
         let mut job = lock(&self.job);
         let killed = job.child.as_mut().map(|c| c.kill().is_ok()).unwrap_or(false);
@@ -430,12 +663,16 @@ impl PluginHandler for Plugin {
             "backup/start" => self.backup_start(params),
             "download/read" => self.download_read(params),
             "download/delete" => self.download_delete(params),
+            "tools/check" => Ok(self.check_tools(params)),
+            "dump/inspect" => self.inspect_dump(params),
+            "db/objects" => self.list_objects(params),
             _ => Err(PluginError::method_not_found(method)),
         }
     }
 }
 
 fn main() -> std::io::Result<()> {
+    cleanup_temp_dir();
     let metadata = PluginMetadata::new("alvinades98.pg-backup-restore", env!("CARGO_PKG_VERSION"));
     PluginServer::new(metadata, Plugin::default()).serve()
 }
@@ -467,7 +704,8 @@ mod tests {
     #[test]
     fn password_not_in_command_line() {
         let params = json!({ "host": "h", "port": "5432", "user": "u", "password": "s3cret", "database": "d", "clean": true });
-        let line = describe(&build_restore(&params, &Format::Archive, "/x.sql"));
+        let line = describe(&build_restore(&params, &Format::Archive, "/x.sql", Some(Path::new("/l.list"))));
+        assert!(line.contains("-L /l.list /x.sql"));
         assert!(!line.contains("s3cret"));
         assert!(line.contains("--clean --if-exists"));
     }
@@ -506,6 +744,43 @@ mod tests {
         let sneaky = format!("{}/../../etc/passwd", upload_dir().display());
         assert!(plugin.download_read(json!({ "path": sneaky })).is_err());
         assert_eq!(plugin.download_delete(json!({ "path": path })).unwrap()["deleted"], true);
+    }
+
+    #[test]
+    fn versions_and_patterns() {
+        assert_eq!(major("18.6"), Some(18));
+        assert_eq!(major("17.2 (Debian 17.2-1)"), Some(17));
+        assert_eq!(major("9.6.24"), Some(9));
+        assert_eq!(major("devel"), None);
+        assert_eq!(quote_pattern("My\"Schema"), "\"My\"\"Schema\"");
+        for ok in ["0", "9", "gzip", "gzip:9", "zstd", "zstd:19", "lz4:3"] {
+            assert!(valid_compress(ok), "{ok}");
+        }
+        for bad in ["", "10", "zstd:", "zstd:100", "brotli", "1; rm -rf /", "gzip:a"] {
+            assert!(!valid_compress(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn roles_sql_quotes_and_skips_unsafe_names() {
+        let sql = roles_sql(&["user_remote".into(), "o'brien".into(), "bad$name".into()]).unwrap();
+        assert!(sql.contains("ARRAY['user_remote', 'o''brien']::text[]"));
+        assert!(!sql.contains("bad$name"));
+        assert!(roles_sql(&["$x".into()]).is_none());
+    }
+
+    #[test]
+    fn backup_selection_roles_and_compression_flags() {
+        let params = json!({ "host": "h", "port": "1", "user": "u", "database": "src", "format": "c",
+            "schemas": ["akademik", "Big\"One"], "excludeData": [["akademik", "logs"]], "compress": "zstd:9" });
+        let line = describe(&build_backup(&params, Path::new("/o")));
+        assert!(line.contains("-n \"akademik\" -n \"Big\"\"One\""));
+        assert!(line.contains("--exclude-table-data \"akademik\".\"logs\""));
+        assert!(line.ends_with("-Z zstd:9"));
+        let tar = describe(&build_backup(&json!({ "format": "t", "compress": "9" }), Path::new("/o")));
+        assert!(!tar.contains("-Z"), "tar archives are not compressed by pg_dump");
+        let roles = describe(&build_backup(&json!({ "content": "roles", "database": "postgres", "noRolePasswords": true }), Path::new("/r.sql")));
+        assert!(roles.starts_with("pg_dumpall ") && roles.contains("-l postgres --globals-only -f /r.sql --verbose --no-role-passwords"));
     }
 
     #[test]

@@ -134,6 +134,38 @@
       .seg label:has(input:focus-visible) { box-shadow: inset 0 0 0 2px var(--primary); }
       [hidden] { display: none !important; }
       @media (max-width: 900px) { .app { grid-template-columns: 1fr; height: auto; } .log-card { min-height: 420px; } }
+      .msg.warn { color: var(--warn); }
+      .versions { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11.5px; }
+      .versions:empty { display: none; }
+      .ver { padding: 2px 8px; border-radius: 999px; background: var(--subtle); color: var(--muted); font-family: var(--font-mono, ui-monospace, monospace); }
+      .ver.bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+      .ver.ok { color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
+      .info { font-size: 12px; color: var(--muted); line-height: 1.5; }
+      .info b { color: var(--fg); font-weight: 550; }
+      .tree { border: 1px solid var(--border); border-radius: var(--radius); max-height: 300px; overflow: auto; }
+      .tree-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--border); background: var(--subtle); position: sticky; top: 0; z-index: 1; font-size: 12px; color: var(--muted); }
+      .tree-head span { flex: 1; }
+      .tree-head button { height: 24px; padding: 0 8px; font-size: 11.5px; }
+      .tree details { border: 0; padding: 0; }
+      .tree details + details { border-top: 1px solid var(--border); }
+      .tree summary { padding: 7px 12px; color: var(--fg); font-size: 12.5px; font-weight: 500; }
+      .tree summary input, .tree .tbl input { width: 14px; height: 14px; margin: 0; accent-color: var(--primary); }
+      .tree summary .count { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 11.5px; }
+      .tree .tbl { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 40px; font-size: 12px; cursor: pointer; }
+      .tree .tbl:hover { background: var(--subtle); }
+      .tree .tbl span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tree .tbl small { color: var(--muted); font-size: 11px; }
+      .tree .tbl.off span { color: var(--muted); text-decoration: line-through; }
+      .tree .col-label { padding: 4px 12px 2px 40px; font-size: 11px; color: var(--muted); }
+      .history { display: grid; }
+      .hist { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+      .hist + .hist { border-top: 1px solid var(--border); }
+      .hist .meta { flex: 1; min-width: 0; }
+      .hist .name { font-size: 12.5px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .hist .sub { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .hist button { height: 28px; font-size: 12px; }
+      .lang { height: 28px; width: auto; margin-left: auto; padding: 0 6px; font-size: 12px; }
+      header > div { min-width: 0; }
     </style>
   </head>
   <body>
@@ -148,6 +180,8 @@
       <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
       <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
       <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     </svg>
 
     <div class="app">
@@ -157,132 +191,176 @@
           <img class="logo" id="logo" alt="" hidden />
           <div>
             <h1>PG Backup &amp; Restore</h1>
-            <p>pg_dump / pg_restore for PostgreSQL, right inside DBX</p>
+            <p data-i18n="subtitle">pg_dump / pg_restore for PostgreSQL, right inside DBX</p>
           </div>
+          <select id="lang" class="lang" title="Language">
+            <option value="auto">Auto</option>
+            <option value="en">English</option>
+            <option value="id">Bahasa Indonesia</option>
+            <option value="zh-CN">中文</option>
+          </select>
         </header>
 
         <div class="tabs" role="tablist">
-          <button type="button" class="tab" role="tab" data-tab="restore" aria-selected="true"><svg><use href="#i-upload" /></svg>Restore</button>
-          <button type="button" class="tab" role="tab" data-tab="backup" aria-selected="false"><svg><use href="#i-download" /></svg>Backup</button>
+          <button type="button" class="tab" role="tab" data-tab="restore" aria-selected="true"><svg><use href="#i-upload" /></svg><span data-i18n="tabRestore">Restore</span></button>
+          <button type="button" class="tab" role="tab" data-tab="backup" aria-selected="false"><svg><use href="#i-download" /></svg><span data-i18n="tabBackup">Backup</span></button>
         </div>
 
         <section class="card">
-          <div class="card-title">Connection</div>
+          <div class="card-title" data-i18n="connection">Connection</div>
           <label class="field" id="profileBox" hidden>
-            <span>Saved connection</span>
+            <span data-i18n="savedConnection">Saved connection</span>
             <div class="join">
-              <select id="profile"><option value="">New connection…</option></select>
-              <button id="saveProfile" type="button" class="btn-outline btn-icon" title="Save connection"><svg><use href="#i-save" /></svg></button>
-              <button id="deleteProfile" type="button" class="btn-outline btn-icon btn-danger" title="Delete saved connection"><svg><use href="#i-trash" /></svg></button>
+              <select id="profile"><option value="" data-i18n="newConnection">New connection…</option></select>
+              <button id="saveProfile" type="button" class="btn-outline btn-icon" data-i18n-title="saveConnection" title="Save connection"><svg><use href="#i-save" /></svg></button>
+              <button id="deleteProfile" type="button" class="btn-outline btn-icon btn-danger" data-i18n-title="deleteConnection" title="Delete saved connection"><svg><use href="#i-trash" /></svg></button>
             </div>
           </label>
           <div class="grid">
-            <label class="field c4"><span>Host</span><input type="text" name="host" value="localhost" /></label>
-            <label class="field c2"><span>Port</span><input type="text" name="port" value="5432" inputmode="numeric" /></label>
-            <label class="field c3"><span>User</span><input type="text" name="user" value="postgres" /></label>
-            <label class="field c3"><span>Password</span><input type="password" name="password" /></label>
+            <label class="field c4"><span data-i18n="host">Host</span><input type="text" name="host" value="localhost" /></label>
+            <label class="field c2"><span data-i18n="port">Port</span><input type="text" name="port" value="5432" inputmode="numeric" /></label>
+            <label class="field c3"><span data-i18n="user">User</span><input type="text" name="user" value="postgres" /></label>
+            <label class="field c3"><span data-i18n="password">Password</span><input type="password" name="password" /></label>
           </div>
-          <label class="check" id="rememberBox" hidden><input type="checkbox" id="rememberPassword" />Remember password when saving this connection</label>
+          <label class="check" id="rememberBox" hidden><input type="checkbox" id="rememberPassword" /><span data-i18n="rememberPassword">Remember password when saving this connection</span></label>
+          <div class="versions" id="versions"></div>
           <details>
-            <summary><svg><use href="#i-chev" /></svg>PostgreSQL client tools</summary>
+            <summary><svg><use href="#i-chev" /></svg><span data-i18n="clientTools">PostgreSQL client tools</span></summary>
             <div class="grid">
-              <label class="field c6"><span>Bin directory</span><input type="text" name="binDir" placeholder="Empty = use PATH, e.g. /usr/lib/postgresql/18/bin" /></label>
+              <label class="field c6"><span data-i18n="binDir">Bin directory</span><input type="text" name="binDir" data-i18n-placeholder="binDirPlaceholder" placeholder="Empty = use PATH, e.g. /usr/lib/postgresql/18/bin" /></label>
+              <div class="hint c6" data-i18n="binDirHint">pg_dump / pg_restore must be compatible with the server: use the same major version as the server (and as the dump being restored), or newer.</div>
+              <div class="c6"><button id="checkTools" type="button" class="btn-outline" data-i18n="checkVersions">Check versions</button></div>
             </div>
           </details>
         </section>
 
         <section class="card" data-panel="restore">
-          <div class="card-title">Restore</div>
+          <div class="card-title" data-i18n="tabRestore">Restore</div>
           <label class="field">
-            <span>Target database</span>
+            <span data-i18n="targetDb">Target database</span>
             <div class="join">
-              <input type="text" name="database" list="databases" placeholder="Pick from list or type a new name" />
-              <button type="button" class="btn-outline btn-icon load-dbs" title="Load databases from server"><svg><use href="#i-refresh" /></svg></button>
+              <input type="text" name="database" list="databases" data-i18n-placeholder="targetDbPlaceholder" placeholder="Pick from list or type a new name" />
+              <button type="button" class="btn-outline btn-icon load-dbs" data-i18n-title="loadDbs" title="Load databases from server"><svg><use href="#i-refresh" /></svg></button>
             </div>
           </label>
 
           <div class="field">
-            <span>Dump file</span>
+            <span data-i18n="dumpFile">Dump file</span>
             <div class="drop" id="drop">
               <div class="icon"><svg><use href="#i-file" /></svg></div>
               <div class="meta">
-                <div class="name" id="fileName">No file selected</div>
-                <div class="sub" id="fileSub">Browse or drop a .dump / .sql / .tar file here</div>
+                <div class="name" id="fileName" data-i18n="noFile">No file selected</div>
+                <div class="sub" id="fileSub" data-i18n="dropHint">Browse or drop a .dump / .sql / .tar file here</div>
               </div>
-              <button id="browse" type="button" class="btn-outline" hidden>Browse…</button>
+              <button id="browse" type="button" class="btn-outline" hidden data-i18n="browse">Browse…</button>
             </div>
-            <input type="text" name="file" placeholder="…or type an absolute path (required for directory dumps)" />
+            <input type="text" name="file" data-i18n-placeholder="pathPlaceholder" placeholder="…or type an absolute path (required for directory dumps)" />
+            <div class="info" id="dumpInfo" hidden></div>
+          </div>
+
+          <div class="field" id="restoreTreeBox" hidden>
+            <span data-i18n="contents">Contents</span>
+            <div class="tree" id="restoreTree"></div>
+            <div class="hint" data-i18n="restoreTreeHint">Untick a schema to skip it; untick a table to skip only its data. Types and functions from skipped schemas are still restored; foreign keys to tables in skipped schemas will fail and show as errors.</div>
           </div>
 
           <div class="field">
-            <span>Options</span>
+            <span data-i18n="options">Options</span>
             <div class="options">
-              <label class="opt"><input type="checkbox" name="createDb" /><span class="txt"><b>Create database first</b><small>createdb</small></span></label>
-              <label class="opt"><input type="checkbox" name="noOwner" checked /><span class="txt"><b>Skip owner &amp; grants</b><small>--no-owner --no-privileges</small></span></label>
-              <label class="opt"><input type="checkbox" name="clean" /><span class="txt"><b>Drop objects in the dump first</b><small>--clean --if-exists</small></span></label>
-              <label class="opt danger"><input type="checkbox" name="resetDb" /><span class="txt"><b>Reset database</b><small>Drops ALL schemas (incl. public, CASCADE), recreates an empty public, then restores</small></span></label>
+              <label class="opt"><input type="checkbox" name="createDb" /><span class="txt"><b data-i18n="optCreateDb">Create database first</b><small>createdb</small></span></label>
+              <label class="opt" id="createRolesBox" hidden><input type="checkbox" name="createRoles" /><span class="txt"><b data-i18n="optCreateRoles">Create missing roles</b><small id="rolesList"></small></span></label>
+              <label class="opt"><input type="checkbox" name="noOwner" checked /><span class="txt"><b data-i18n="optNoOwner">Skip owner &amp; grants</b><small>--no-owner --no-privileges</small></span></label>
+              <label class="opt"><input type="checkbox" name="clean" /><span class="txt"><b data-i18n="optClean">Drop objects in the dump first</b><small>--clean --if-exists</small></span></label>
+              <label class="opt danger"><input type="checkbox" name="resetDb" /><span class="txt"><b data-i18n="optReset">Reset database</b><small data-i18n="optResetHint">Drops ALL schemas (incl. public, CASCADE), recreates an empty public, then restores. Only use it once you have a backup you know works.</small></span></label>
             </div>
           </div>
 
           <details>
-            <summary><svg><use href="#i-chev" /></svg>Advanced</summary>
+            <summary><svg><use href="#i-chev" /></svg><span data-i18n="advanced">Advanced</span></summary>
             <div class="grid">
-              <label class="field c2"><span>Parallel jobs</span><input type="number" name="jobs" min="1" max="32" value="1" /></label>
-              <div class="hint c4" style="align-self: end; padding-bottom: 8px">Applies to custom and directory archives.</div>
+              <label class="field c2"><span data-i18n="jobs">Parallel jobs</span><input type="number" name="jobs" min="1" max="32" value="1" /></label>
+              <div class="hint c4" style="align-self: end; padding-bottom: 8px" data-i18n="jobsRestoreHint">Applies to custom and directory archives.</div>
             </div>
           </details>
         </section>
 
         <section class="card" data-panel="backup" hidden>
-          <div class="card-title">Backup</div>
+          <div class="card-title" data-i18n="tabBackup">Backup</div>
           <label class="field">
-            <span>Source database</span>
+            <span data-i18n="sourceDb">Source database</span>
             <div class="join">
-              <input type="text" name="bkDatabase" list="databases" placeholder="Pick from list" />
-              <button type="button" class="btn-outline btn-icon load-dbs" title="Load databases from server"><svg><use href="#i-refresh" /></svg></button>
+              <input type="text" name="bkDatabase" list="databases" data-i18n-placeholder="sourceDbPlaceholder" placeholder="Pick from list" />
+              <button type="button" class="btn-outline btn-icon load-dbs" data-i18n-title="loadDbs" title="Load databases from server"><svg><use href="#i-refresh" /></svg></button>
             </div>
           </label>
 
           <div class="field">
-            <span>Format</span>
+            <span data-i18n="content">Content</span>
+            <div class="seg">
+              <label><input type="radio" name="bkContent" value="all" checked /><span data-i18n="contentAll">Schema + data</span></label>
+              <label><input type="radio" name="bkContent" value="schema" /><span data-i18n="contentSchema">Schema only</span></label>
+              <label><input type="radio" name="bkContent" value="data" /><span data-i18n="contentData">Data only</span></label>
+              <label><input type="radio" name="bkContent" value="roles" /><span data-i18n="contentRoles">Roles</span></label>
+            </div>
+            <div class="hint" id="rolesHint" hidden data-i18n="rolesHint">Roles and tablespaces of the whole server (pg_dumpall --globals-only) as a .sql file. Restore it with the Restore tab before restoring database dumps.</div>
+          </div>
+
+          <div class="field" data-db-only>
+            <span data-i18n="format">Format</span>
             <select name="bkFormat">
-              <option value="c">Custom (.dump) — compressed, restorable with pg_restore</option>
-              <option value="p">Plain SQL (.sql) — readable, restorable with psql</option>
-              <option value="t">Tar (.tar)</option>
-              <option value="d">Directory — parallel dump, needs an output path</option>
+              <option value="c" data-i18n="fmtCustom">Custom (.dump) — compressed, restorable with pg_restore</option>
+              <option value="p" data-i18n="fmtPlain">Plain SQL (.sql) — readable, restorable with psql</option>
+              <option value="t" data-i18n="fmtTar">Tar (.tar)</option>
+              <option value="d" data-i18n="fmtDir">Directory — parallel dump, needs an output path</option>
             </select>
           </div>
 
-          <div class="field">
-            <span>Content</span>
-            <div class="seg">
-              <label><input type="radio" name="bkContent" value="all" checked />Schema + data</label>
-              <label><input type="radio" name="bkContent" value="schema" />Schema only</label>
-              <label><input type="radio" name="bkContent" value="data" />Data only</label>
-            </div>
+          <div class="field" id="compressBox" data-db-only>
+            <span data-i18n="compression">Compression</span>
+            <select name="bkCompress">
+              <option value="" data-i18n="compDefault">Default (gzip level 6)</option>
+              <option value="0" data-i18n="compNone">None</option>
+              <option value="gzip:1" data-i18n="compGzipFast">gzip 1 — fastest</option>
+              <option value="gzip:9" data-i18n="compGzipSmall">gzip 9 — smallest gzip</option>
+              <option value="zstd" data-modern data-i18n="compZstd">zstd — fast and small (pg_dump 16+)</option>
+              <option value="zstd:19" data-modern data-i18n="compZstdMax">zstd 19 — smallest (pg_dump 16+, slower)</option>
+              <option value="lz4" data-modern data-i18n="compLz4">lz4 — fastest (pg_dump 16+)</option>
+            </select>
+          </div>
+
+          <div class="field" data-db-only>
+            <span data-i18n="contents">Contents</span>
+            <div class="tree" id="backupTree"></div>
+            <div class="hint" data-i18n="backupTreeHint">Untick a schema to leave it out (-n); untick a table to keep its structure but skip its data (--exclude-table-data), e.g. large log tables.</div>
           </div>
 
           <div class="field">
-            <span>Options</span>
+            <span data-i18n="options">Options</span>
             <div class="options">
-              <label class="opt"><input type="checkbox" name="bkNoOwner" /><span class="txt"><b>Skip owner &amp; grants</b><small>--no-owner --no-privileges</small></span></label>
-              <label class="opt"><input type="checkbox" name="bkClean" /><span class="txt"><b>Include DROP statements</b><small>--clean --if-exists</small></span></label>
+              <label class="opt" data-db-only><input type="checkbox" name="bkNoOwner" /><span class="txt"><b data-i18n="optNoOwner">Skip owner &amp; grants</b><small>--no-owner --no-privileges</small></span></label>
+              <label class="opt" data-db-only><input type="checkbox" name="bkClean" /><span class="txt"><b data-i18n="optDrops">Include DROP statements</b><small>--clean --if-exists</small></span></label>
+              <label class="opt" data-roles-only hidden><input type="checkbox" name="bkNoRolePasswords" checked /><span class="txt"><b data-i18n="optNoRolePasswords">Leave out role passwords</b><small>--no-role-passwords</small></span></label>
             </div>
           </div>
 
           <div class="field">
-            <span>Save to</span>
-            <div class="hint" id="saveHint">You'll choose where to save when the backup starts.</div>
-            <input type="text" name="bkOutput" placeholder="…or type an absolute output path on this machine" />
+            <span data-i18n="saveTo">Save to</span>
+            <div class="hint" id="saveHint"></div>
+            <input type="text" name="bkOutput" data-i18n-placeholder="outputPlaceholder" placeholder="…or type an absolute output path on this machine" />
           </div>
 
           <details id="bkAdvanced" hidden>
-            <summary><svg><use href="#i-chev" /></svg>Advanced</summary>
+            <summary><svg><use href="#i-chev" /></svg><span data-i18n="advanced">Advanced</span></summary>
             <div class="grid">
-              <label class="field c2"><span>Parallel jobs</span><input type="number" name="bkJobs" min="1" max="32" value="4" /></label>
-              <div class="hint c4" style="align-self: end; padding-bottom: 8px">Directory format only.</div>
+              <label class="field c2"><span data-i18n="jobs">Parallel jobs</span><input type="number" name="bkJobs" min="1" max="32" value="4" /></label>
+              <div class="hint c4" style="align-self: end; padding-bottom: 8px" data-i18n="jobsBackupHint">Directory format only.</div>
             </div>
           </details>
+        </section>
+
+        <section class="card" data-panel="backup" id="historyCard" hidden>
+          <div class="card-title"><svg width="13" height="13"><use href="#i-clock" /></svg><span data-i18n="history">Recent backups</span></div>
+          <div class="history" id="history"></div>
         </section>
         <datalist id="databases"></datalist>
         </div>
@@ -291,23 +369,200 @@
           <div class="msg" id="msg"></div>
           <div class="actions">
             <button id="start" type="submit" class="btn-primary"><svg><use href="#i-play" /></svg><span id="startLabel">Restore</span></button>
-            <button id="cancel" type="button" class="btn-outline" disabled><svg><use href="#i-stop" /></svg>Cancel</button>
+            <button id="cancel" type="button" class="btn-outline" disabled><svg><use href="#i-stop" /></svg><span data-i18n="cancel">Cancel</span></button>
           </div>
         </div>
       </form>
 
       <section class="log-card">
         <div class="log-head">
-          <div class="card-title"><svg width="14" height="14"><use href="#i-term" /></svg>Output</div>
+          <div class="card-title"><svg width="14" height="14"><use href="#i-term" /></svg><span data-i18n="output">Output</span></div>
           <span class="counts" id="counts"></span>
           <span class="pill" id="pill">Idle</span>
-          <button id="clearLog" type="button" class="btn-ghost">Clear</button>
+          <button id="copyLog" type="button" class="btn-ghost btn-icon" data-i18n-title="copyLog" title="Copy log" hidden><svg><use href="#i-copy" /></svg></button>
+          <button id="saveLog" type="button" class="btn-ghost btn-icon" data-i18n-title="saveLog" title="Save log to file" hidden><svg><use href="#i-download" /></svg></button>
+          <button id="clearLog" type="button" class="btn-ghost" data-i18n="clear">Clear</button>
         </div>
-        <pre id="log"><div class="empty"><div><svg><use href="#i-term" /></svg><div>Output will appear here</div></div></div></pre>
+        <pre id="log"><div class="empty"><div><svg><use href="#i-term" /></svg><div data-i18n="outputEmpty">Output will appear here</div></div></div></pre>
       </section>
     </div>
 
     <script>
+      // UI strings; {name} placeholders are filled by t(). Missing keys fall back to English.
+      const STRINGS = {
+        en: {
+          subtitle: "pg_dump / pg_restore for PostgreSQL, right inside DBX",
+          tabRestore: "Restore", tabBackup: "Backup", connection: "Connection",
+          savedConnection: "Saved connection", newConnection: "New connection…", saveConnection: "Save connection", deleteConnection: "Delete saved connection",
+          host: "Host", port: "Port", user: "User", password: "Password",
+          rememberPassword: "Remember password when saving this connection",
+          clientTools: "PostgreSQL client tools", binDir: "Bin directory", binDirPlaceholder: "Empty = use PATH, e.g. /usr/lib/postgresql/18/bin",
+          binDirHint: "pg_dump / pg_restore must be compatible with the server: use the same major version as the server (and as the dump being restored), or newer.",
+          checkVersions: "Check versions",
+          targetDb: "Target database", targetDbPlaceholder: "Pick from list or type a new name", loadDbs: "Load databases from server",
+          dumpFile: "Dump file", noFile: "No file selected", dropHint: "Browse or drop a .dump / .sql / .tar file here", browse: "Browse…",
+          pathPlaceholder: "…or type an absolute path (required for directory dumps)", pathOnMachine: "Path on this machine",
+          contents: "Contents",
+          restoreTreeHint: "Untick a schema to skip it; untick a table to skip only its data. Types and functions from skipped schemas are still restored; foreign keys to tables in skipped schemas will fail and show as errors.",
+          backupTreeHint: "Untick a schema to leave it out (-n); untick a table to keep its structure but skip its data (--exclude-table-data), e.g. large log tables.",
+          options: "Options", optCreateDb: "Create database first", optCreateRoles: "Create missing roles (NOLOGIN)",
+          optNoOwner: "Skip owner & grants", optClean: "Drop objects in the dump first", optReset: "Reset database",
+          optResetHint: "Drops ALL schemas (incl. public, CASCADE), recreates an empty public, then restores. Only use it once you have a backup you know works.",
+          optDrops: "Include DROP statements", optNoRolePasswords: "Leave out role passwords",
+          advanced: "Advanced", jobs: "Parallel jobs", jobsRestoreHint: "Applies to custom and directory archives.", jobsBackupHint: "Directory format only.",
+          sourceDb: "Source database", sourceDbPlaceholder: "Pick from list",
+          content: "Content", contentAll: "Schema + data", contentSchema: "Schema only", contentData: "Data only", contentRoles: "Roles",
+          rolesHint: "Roles and tablespaces of the whole server (pg_dumpall --globals-only) as a .sql file. Restore it with the Restore tab before restoring database dumps.",
+          format: "Format", fmtCustom: "Custom (.dump) — compressed, restorable with pg_restore", fmtPlain: "Plain SQL (.sql) — readable, restorable with psql",
+          fmtTar: "Tar (.tar)", fmtDir: "Directory — parallel dump, needs an output path",
+          compression: "Compression", compDefault: "Default (gzip level 6)", compNone: "None", compGzipFast: "gzip 1 — fastest", compGzipSmall: "gzip 9 — smallest gzip",
+          compZstd: "zstd — fast and small (pg_dump 16+)", compZstdMax: "zstd 19 — smallest (pg_dump 16+, slower)", compLz4: "lz4 — fastest (pg_dump 16+)",
+          saveTo: "Save to", outputPlaceholder: "…or type an absolute output path on this machine",
+          saveHintDialog: "You'll choose where to save when the backup starts.", saveHintPath: "Type an absolute output path below.",
+          saveHintDir: "Directory format writes many files — type an output directory path below.",
+          history: "Recent backups", historyEmpty: "No backups yet.", restoreThis: "Restore this", restorePick: "Restore…",
+          cancel: "Cancel", output: "Output", outputEmpty: "Output will appear here", clear: "Clear", copyLog: "Copy log", saveLog: "Save log to file",
+          startRestore: "Restore", startReset: "Reset & Restore", startBackup: "Backup", confirmWipe: "Confirm: wipe & restore",
+          idle: "Idle", starting: "Starting", running: "Running", runningPct: "Running {pct}%", copying: "Copying {pct}%", saving: "Saving {pct}%",
+          completed: "Completed", failed: "Failed", cancelled: "Cancelled", exitCode: "Exit {code}",
+          treeAll: "All", treeNone: "None", treeSummary: "{schemas} of {total} schemas · data skipped for {skipped} tables",
+          treeLoad: "Load schemas & tables", treeEmpty: "Pick a source database to choose schemas and tables.", tablesCount: "{n} tables",
+          schemaOnlyCol: "Ticked tables include data",
+          dumpInfo: "<b>{kind}</b> · dumped by pg_dump {by} from PostgreSQL {from}", dumpItems: " · {n} items",
+          kindArchive: "pg_dump archive", kindPlain: "Plain SQL", unknownVersion: "unknown",
+          selected: "{size} · ready to restore", uploading: "{size} · copying to a temp file… {pct}%",
+          errors: "{n} errors", error1: "1 error", warnings: "{n} warnings", warning1: "1 warning",
+          fillIn: "Please fill in {field}.", chooseFile: "Choose a dump file first.", outputNeeded: "Type an output path for this backup.",
+          backupCancelled: "Backup cancelled.", saved: "Saved \"{name}\"", deleted: "Deleted \"{name}\"",
+          dbsFound: "{n} databases on server — pick one from the list", cannotListDbs: "Cannot list databases: {err}",
+          wipeWarning: "All schemas and data in \"{db}\" on {host}:{port} will be permanently dropped. Make sure you have a working backup, then click again to confirm.",
+          doneOk: "{what} completed successfully.", doneWithErrors: "{what} finished; some statements reported errors — review the output.",
+          doneFailed: "{what} finished with errors — review the highlighted lines.", whatRestore: "Restore", whatBackup: "Backup", whatJob: "Job",
+          savedFile: "Saved {name} ({size})", copied: "Log copied to clipboard.", logSaved: "Log saved.", statusError: "Status error: {err}",
+          serverUnreachable: "Cannot connect to the server: {err}",
+          toolMissing: "{tool} was not found. Install the PostgreSQL client tools or set the bin directory.",
+          toolTooOldForServer: "{tool} {tool_v} is older than the server ({server_v}). {tool} must be version {server_major} or newer — install a newer client or set the bin directory.",
+          toolTooOldForDump: "pg_restore {tool_v} cannot read a dump made by pg_dump {dump_v}. Use pg_restore {dump_major} or newer.",
+          dumpNewerThanServer: "The dump was made by pg_dump {dump_v} but the server is PostgreSQL {server_v}; some statements may fail on the older server.",
+          compressNeeds16: "{method} compression needs pg_dump 16 or newer (found {tool_v}).",
+          serverLabel: "server", inspectFailed: "Cannot read the dump: {err}",
+        },
+        id: {
+          subtitle: "pg_dump / pg_restore untuk PostgreSQL, langsung di DBX",
+          tabRestore: "Restore", tabBackup: "Backup", connection: "Koneksi",
+          savedConnection: "Koneksi tersimpan", newConnection: "Koneksi baru…", saveConnection: "Simpan koneksi", deleteConnection: "Hapus koneksi tersimpan",
+          host: "Host", port: "Port", user: "User", password: "Password",
+          rememberPassword: "Ingat password saat menyimpan koneksi ini",
+          clientTools: "PostgreSQL client tools", binDir: "Folder bin", binDirPlaceholder: "Kosong = pakai PATH, mis. /usr/lib/postgresql/18/bin",
+          binDirHint: "pg_dump / pg_restore harus kompatibel dengan server: pakai versi mayor yang sama dengan server (dan dengan dump yang di-restore) atau lebih baru.",
+          checkVersions: "Cek versi",
+          targetDb: "Database tujuan", targetDbPlaceholder: "Pilih dari daftar atau ketik nama baru", loadDbs: "Ambil daftar database dari server",
+          dumpFile: "File dump", noFile: "Belum ada file", dropHint: "Pilih atau drop file .dump / .sql / .tar di sini", browse: "Pilih…",
+          pathPlaceholder: "…atau ketik path absolut (wajib untuk dump format direktori)", pathOnMachine: "Path di mesin ini",
+          contents: "Isi",
+          restoreTreeHint: "Hilangkan centang schema untuk melewatinya; hilangkan centang tabel untuk melewati datanya saja. Type dan function dari schema yang dilewati tetap di-restore; foreign key ke tabel di schema yang dilewati akan gagal dan muncul sebagai error.",
+          backupTreeHint: "Hilangkan centang schema untuk tidak ikut (-n); hilangkan centang tabel untuk tetap menyimpan strukturnya tanpa data (--exclude-table-data), mis. tabel log yang besar.",
+          options: "Opsi", optCreateDb: "Buat database dulu", optCreateRoles: "Buat role yang belum ada (NOLOGIN)",
+          optNoOwner: "Lewati owner & grant", optClean: "Hapus objek di dump terlebih dulu", optReset: "Reset database",
+          optResetHint: "Menghapus SEMUA schema (termasuk public, CASCADE), membuat public kosong, lalu restore. Pakai hanya jika kamu punya backup yang sudah pasti bisa dipakai.",
+          optDrops: "Sertakan perintah DROP", optNoRolePasswords: "Tanpa password role",
+          advanced: "Lanjutan", jobs: "Job paralel", jobsRestoreHint: "Berlaku untuk arsip custom dan direktori.", jobsBackupHint: "Hanya format direktori.",
+          sourceDb: "Database sumber", sourceDbPlaceholder: "Pilih dari daftar",
+          content: "Isi", contentAll: "Schema + data", contentSchema: "Schema saja", contentData: "Data saja", contentRoles: "Role",
+          rolesHint: "Role dan tablespace seluruh server (pg_dumpall --globals-only) sebagai file .sql. Restore lewat tab Restore sebelum me-restore dump database.",
+          format: "Format", fmtCustom: "Custom (.dump) — terkompresi, di-restore dengan pg_restore", fmtPlain: "Plain SQL (.sql) — bisa dibaca, di-restore dengan psql",
+          fmtTar: "Tar (.tar)", fmtDir: "Direktori — dump paralel, butuh path output",
+          compression: "Kompresi", compDefault: "Default (gzip level 6)", compNone: "Tanpa kompresi", compGzipFast: "gzip 1 — paling cepat", compGzipSmall: "gzip 9 — gzip terkecil",
+          compZstd: "zstd — cepat dan kecil (pg_dump 16+)", compZstdMax: "zstd 19 — terkecil (pg_dump 16+, lebih lambat)", compLz4: "lz4 — paling cepat (pg_dump 16+)",
+          saveTo: "Simpan ke", outputPlaceholder: "…atau ketik path output absolut di mesin ini",
+          saveHintDialog: "Kamu akan memilih lokasi simpan saat backup dimulai.", saveHintPath: "Ketik path output absolut di bawah.",
+          saveHintDir: "Format direktori menulis banyak file — ketik path folder output di bawah.",
+          history: "Backup terakhir", historyEmpty: "Belum ada backup.", restoreThis: "Restore ini", restorePick: "Restore…",
+          cancel: "Batal", output: "Output", outputEmpty: "Output akan muncul di sini", clear: "Bersihkan", copyLog: "Salin log", saveLog: "Simpan log ke file",
+          startRestore: "Restore", startReset: "Reset & Restore", startBackup: "Backup", confirmWipe: "Konfirmasi: hapus & restore",
+          idle: "Siap", starting: "Memulai", running: "Berjalan", runningPct: "Berjalan {pct}%", copying: "Menyalin {pct}%", saving: "Menyimpan {pct}%",
+          completed: "Selesai", failed: "Gagal", cancelled: "Dibatalkan", exitCode: "Exit {code}",
+          treeAll: "Semua", treeNone: "Tidak ada", treeSummary: "{schemas} dari {total} schema · data dilewati untuk {skipped} tabel",
+          treeLoad: "Ambil schema & tabel", treeEmpty: "Pilih database sumber untuk memilih schema dan tabel.", tablesCount: "{n} tabel",
+          schemaOnlyCol: "Tabel yang dicentang ikut datanya",
+          dumpInfo: "<b>{kind}</b> · dibuat oleh pg_dump {by} dari PostgreSQL {from}", dumpItems: " · {n} item",
+          kindArchive: "Arsip pg_dump", kindPlain: "Plain SQL", unknownVersion: "tidak diketahui",
+          selected: "{size} · siap di-restore", uploading: "{size} · menyalin ke file sementara… {pct}%",
+          errors: "{n} error", error1: "1 error", warnings: "{n} peringatan", warning1: "1 peringatan",
+          fillIn: "Isi {field} dulu.", chooseFile: "Pilih file dump dulu.", outputNeeded: "Ketik path output untuk backup ini.",
+          backupCancelled: "Backup dibatalkan.", saved: "Tersimpan \"{name}\"", deleted: "Terhapus \"{name}\"",
+          dbsFound: "{n} database di server — pilih dari daftar", cannotListDbs: "Tidak bisa mengambil daftar database: {err}",
+          wipeWarning: "Semua schema dan data di \"{db}\" pada {host}:{port} akan dihapus permanen. Pastikan kamu punya backup yang bisa dipakai, lalu klik sekali lagi untuk konfirmasi.",
+          doneOk: "{what} berhasil.", doneWithErrors: "{what} selesai; beberapa perintah error — periksa output.",
+          doneFailed: "{what} selesai dengan error — periksa baris yang ditandai.", whatRestore: "Restore", whatBackup: "Backup", whatJob: "Proses",
+          savedFile: "Tersimpan {name} ({size})", copied: "Log disalin ke clipboard.", logSaved: "Log tersimpan.", statusError: "Error status: {err}",
+          serverUnreachable: "Tidak bisa terhubung ke server: {err}",
+          toolMissing: "{tool} tidak ditemukan. Pasang PostgreSQL client tools atau isi folder bin.",
+          toolTooOldForServer: "{tool} {tool_v} lebih lama dari server ({server_v}). {tool} harus versi {server_major} atau lebih baru — pasang client yang lebih baru atau isi folder bin.",
+          toolTooOldForDump: "pg_restore {tool_v} tidak bisa membaca dump buatan pg_dump {dump_v}. Pakai pg_restore {dump_major} atau lebih baru.",
+          dumpNewerThanServer: "Dump dibuat oleh pg_dump {dump_v}, sedangkan server PostgreSQL {server_v}; beberapa perintah bisa gagal di server yang lebih lama.",
+          compressNeeds16: "Kompresi {method} butuh pg_dump 16 atau lebih baru (terpasang {tool_v}).",
+          serverLabel: "server", inspectFailed: "Tidak bisa membaca dump: {err}",
+        },
+        "zh-CN": {
+          subtitle: "在 DBX 中直接使用 pg_dump / pg_restore 备份和恢复 PostgreSQL",
+          tabRestore: "恢复", tabBackup: "备份", connection: "连接",
+          savedConnection: "已保存的连接", newConnection: "新建连接…", saveConnection: "保存连接", deleteConnection: "删除已保存的连接",
+          host: "主机", port: "端口", user: "用户", password: "密码",
+          rememberPassword: "保存连接时记住密码",
+          clientTools: "PostgreSQL 客户端工具", binDir: "bin 目录", binDirPlaceholder: "留空则使用 PATH，例如 /usr/lib/postgresql/18/bin",
+          binDirHint: "pg_dump / pg_restore 必须与服务器兼容：主版本号需不低于服务器（以及待恢复的转储文件）的主版本号。",
+          checkVersions: "检查版本",
+          targetDb: "目标数据库", targetDbPlaceholder: "从列表选择或输入新名称", loadDbs: "从服务器加载数据库列表",
+          dumpFile: "转储文件", noFile: "未选择文件", dropHint: "浏览或将 .dump / .sql / .tar 文件拖到这里", browse: "浏览…",
+          pathPlaceholder: "…或输入绝对路径（目录格式转储必须）", pathOnMachine: "本机路径",
+          contents: "内容",
+          restoreTreeHint: "取消勾选模式以跳过它；取消勾选表仅跳过其数据。被跳过模式中的类型和函数仍会恢复；指向被跳过模式中表的外键会失败并显示为错误。",
+          backupTreeHint: "取消勾选模式以排除它（-n）；取消勾选表则保留结构但跳过数据（--exclude-table-data），例如大型日志表。",
+          options: "选项", optCreateDb: "先创建数据库", optCreateRoles: "创建缺失的角色（NOLOGIN）",
+          optNoOwner: "跳过所有者和授权", optClean: "先删除转储中的对象", optReset: "重置数据库",
+          optResetHint: "删除目标库中所有模式（包括 public，CASCADE），重建空的 public 后再恢复。请仅在确认备份可用后使用。",
+          optDrops: "包含 DROP 语句", optNoRolePasswords: "不包含角色密码",
+          advanced: "高级", jobs: "并行任务数", jobsRestoreHint: "适用于 custom 和目录格式。", jobsBackupHint: "仅目录格式。",
+          sourceDb: "源数据库", sourceDbPlaceholder: "从列表选择",
+          content: "内容", contentAll: "结构 + 数据", contentSchema: "仅结构", contentData: "仅数据", contentRoles: "角色",
+          rolesHint: "整个服务器的角色和表空间（pg_dumpall --globals-only），保存为 .sql 文件。请在恢复数据库转储之前，先通过“恢复”标签页恢复它。",
+          format: "格式", fmtCustom: "Custom（.dump）— 压缩，使用 pg_restore 恢复", fmtPlain: "纯 SQL（.sql）— 可读，使用 psql 恢复",
+          fmtTar: "Tar（.tar）", fmtDir: "目录 — 并行转储，需要输出路径",
+          compression: "压缩", compDefault: "默认（gzip 级别 6）", compNone: "不压缩", compGzipFast: "gzip 1 — 最快", compGzipSmall: "gzip 9 — gzip 最小",
+          compZstd: "zstd — 快且小（pg_dump 16+）", compZstdMax: "zstd 19 — 最小（pg_dump 16+，较慢）", compLz4: "lz4 — 最快（pg_dump 16+）",
+          saveTo: "保存到", outputPlaceholder: "…或输入本机上的绝对输出路径",
+          saveHintDialog: "开始备份时将选择保存位置。", saveHintPath: "请在下方输入绝对输出路径。",
+          saveHintDir: "目录格式会写入多个文件 — 请在下方输入输出目录路径。",
+          history: "最近的备份", historyEmpty: "暂无备份。", restoreThis: "恢复此备份", restorePick: "恢复…",
+          cancel: "取消", output: "输出", outputEmpty: "输出将显示在这里", clear: "清空", copyLog: "复制日志", saveLog: "将日志保存为文件",
+          startRestore: "恢复", startReset: "重置并恢复", startBackup: "备份", confirmWipe: "确认：清空并恢复",
+          idle: "空闲", starting: "启动中", running: "运行中", runningPct: "运行中 {pct}%", copying: "复制中 {pct}%", saving: "保存中 {pct}%",
+          completed: "已完成", failed: "失败", cancelled: "已取消", exitCode: "退出码 {code}",
+          treeAll: "全选", treeNone: "全不选", treeSummary: "已选 {schemas}/{total} 个模式 · 跳过 {skipped} 个表的数据",
+          treeLoad: "加载模式和表", treeEmpty: "选择源数据库后即可选择模式和表。", tablesCount: "{n} 个表",
+          schemaOnlyCol: "勾选的表包含数据",
+          dumpInfo: "<b>{kind}</b> · 由 pg_dump {by} 从 PostgreSQL {from} 转储", dumpItems: " · {n} 项",
+          kindArchive: "pg_dump 归档", kindPlain: "纯 SQL", unknownVersion: "未知",
+          selected: "{size} · 可以恢复", uploading: "{size} · 正在复制到临时文件… {pct}%",
+          errors: "{n} 个错误", error1: "1 个错误", warnings: "{n} 个警告", warning1: "1 个警告",
+          fillIn: "请填写{field}。", chooseFile: "请先选择转储文件。", outputNeeded: "请为此备份输入输出路径。",
+          backupCancelled: "备份已取消。", saved: "已保存“{name}”", deleted: "已删除“{name}”",
+          dbsFound: "服务器上有 {n} 个数据库 — 请从列表中选择", cannotListDbs: "无法获取数据库列表：{err}",
+          wipeWarning: "{host}:{port} 上“{db}”中的所有模式和数据将被永久删除。请确认已有可用的备份，然后再次点击以确认。",
+          doneOk: "{what}成功完成。", doneWithErrors: "{what}已完成；部分语句报错 — 请检查输出。",
+          doneFailed: "{what}完成但有错误 — 请检查标出的行。", whatRestore: "恢复", whatBackup: "备份", whatJob: "任务",
+          savedFile: "已保存 {name}（{size}）", copied: "日志已复制到剪贴板。", logSaved: "日志已保存。", statusError: "状态错误：{err}",
+          serverUnreachable: "无法连接服务器：{err}",
+          toolMissing: "未找到 {tool}。请安装 PostgreSQL 客户端工具或设置 bin 目录。",
+          toolTooOldForServer: "{tool} {tool_v} 低于服务器版本（{server_v}）。{tool} 需要 {server_major} 或更高版本 — 请安装更新的客户端或设置 bin 目录。",
+          toolTooOldForDump: "pg_restore {tool_v} 无法读取由 pg_dump {dump_v} 创建的转储。请使用 pg_restore {dump_major} 或更高版本。",
+          dumpNewerThanServer: "该转储由 pg_dump {dump_v} 创建，而服务器为 PostgreSQL {server_v}；部分语句可能在较旧的服务器上失败。",
+          compressNeeds16: "{method} 压缩需要 pg_dump 16 或更高版本（当前为 {tool_v}）。",
+          serverLabel: "服务器", inspectFailed: "无法读取转储：{err}",
+        },
+      };
+
       const $ = (sel) => document.querySelector(sel);
       const $$ = (sel) => [...document.querySelectorAll(sel)];
       const form = $("#form");
@@ -321,21 +576,70 @@
       const CONN_FIELDS = ["host", "port", "user", "password", "binDir"];
       const CHUNK = 1024 * 1024;
       const MAX_LINES = 5000;
+      const MAX_HISTORY = 20;
       const EXT = { c: "dump", p: "sql", t: "tar" };
+      let caps = {};
+      let lang = "en";
       let mode = "restore";
       let offset = 0;
-      let picked = null; // fileTransfer handle chosen via Browse/drop
-      let profiles = [];
+      let logText = []; // full log of the current run, for copy/save (the DOM keeps only MAX_LINES)
       let errors = 0;
       let warnings = 0;
       let armed = false; // second click confirms a destructive reset
       let cancelled = false;
-      let caps = {};
+      let profiles = [];
+      let history = [];
+      let tools = null; // last tools/check result
+      // Restore source: the picked file handle (if any), its temp copy / typed path, and what inspect found.
+      let picked = null;
+      let source = null; // { path, temp, uploading: Promise|null }
+      let dump = null; // dump/inspect result
+      // Restore progress: total TOC items and items done, counted from pg_restore --verbose lines.
+      const progress = { total: 0, done: 0, parallel: false };
+      const trees = {};
 
+      // ---- i18n ----
+      function t(key, vars = {}) {
+        const text = (STRINGS[lang] && STRINGS[lang][key]) ?? STRINGS.en[key] ?? key;
+        return text.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? `{${k}}`));
+      }
+
+      function resolveLang(choice) {
+        if (choice && choice !== "auto") return choice;
+        const loc = (plugin.locale || navigator.language || "en").toLowerCase();
+        return loc.startsWith("zh") ? "zh-CN" : loc.startsWith("id") ? "id" : "en";
+      }
+
+      function applyLang() {
+        document.documentElement.lang = lang;
+        $$("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
+        $$("[data-i18n-placeholder]").forEach((el) => (el.placeholder = t(el.dataset.i18nPlaceholder)));
+        $$("[data-i18n-title]").forEach((el) => (el.title = t(el.dataset.i18nTitle)));
+        if (pill.className === "pill") pill.textContent = t("idle");
+        updateStartLabel();
+        updateBackupForm();
+        renderDumpInfo();
+        renderVersions();
+        renderHistory();
+        Object.values(trees).forEach((tree) => tree.render());
+        updateCounts();
+      }
+
+      $("#lang").addEventListener("change", async () => {
+        lang = resolveLang($("#lang").value);
+        applyLang();
+        if (caps.storage && plugin.storage) await plugin.storage.set("lang", $("#lang").value).catch(() => {});
+      });
+
+      // ---- helpers ----
       const rpc = (method, params = {}) => plugin.invoke(method, params, { timeoutMs: 30000 });
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const mb = (bytes) => (bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(2)} GB` : `${(bytes / 1048576).toFixed(1)} MB`);
+      const human = (bytes) => (bytes >= 1048576 ? mb(bytes) : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+      const major = (v) => (v ? parseInt(String(v), 10) || null : null);
       const canSave = () => Boolean(plugin.fileTransfer && caps.fileTransfer && caps.fileTransfer.beginSave);
+      const toBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
       function setMsg(text, cls = "") {
         msg.textContent = text;
@@ -350,7 +654,7 @@
       function setRunning(running) {
         startBtn.disabled = running;
         cancelBtn.disabled = !running;
-        $$(".tab").forEach((t) => (t.disabled = running));
+        $$(".tab").forEach((tab) => (tab.disabled = running));
       }
 
       function connParams() {
@@ -358,33 +662,43 @@
       }
 
       function missing(params, keys) {
+        const labels = { host: "host", port: "port", user: "user", database: mode === "backup" ? "sourceDb" : "targetDb" };
         const key = keys.find((k) => !String(params[k] ?? "").trim());
-        if (key) setMsg(`Please fill in ${key === "bkDatabase" ? "source database" : key}.`, "bad");
+        if (key) setMsg(t("fillIn", { field: t(labels[key] || key).toLowerCase() }), "bad");
         return Boolean(key);
       }
 
       // ---- tabs ----
       function updateStartLabel() {
         const reset = mode === "restore" && form.resetDb.checked;
-        $("#startLabel").textContent = mode === "backup" ? "Backup" : reset ? "Reset & Restore" : "Restore";
+        $("#startLabel").textContent = armed ? t("confirmWipe") : mode === "backup" ? t("startBackup") : reset ? t("startReset") : t("startRestore");
         startBtn.classList.toggle("danger", reset);
       }
 
       function selectTab(name) {
         mode = name;
-        $$(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === name)));
-        $$("[data-panel]").forEach((p) => (p.hidden = p.dataset.panel !== name));
+        $$(".tab").forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.tab === name)));
+        $$("[data-panel]").forEach((p) => (p.hidden = p.dataset.panel !== name || (p.id === "historyCard" && !history.length)));
         armed = false;
         setMsg("");
         updateStartLabel();
       }
-      $$(".tab").forEach((t) => t.addEventListener("click", () => selectTab(t.dataset.tab)));
+      $$(".tab").forEach((tab) => tab.addEventListener("click", () => selectTab(tab.dataset.tab)));
 
       // ---- log ----
+      function updateCounts() {
+        const parts = [];
+        if (errors) parts.push(errors === 1 ? t("error1") : t("errors", { n: errors }));
+        if (warnings) parts.push(warnings === 1 ? t("warning1") : t("warnings", { n: warnings }));
+        $("#counts").textContent = parts.join(" · ");
+      }
+
       function clearLog() {
         log.textContent = "";
+        logText = [];
         errors = warnings = 0;
-        $("#counts").textContent = "";
+        updateCounts();
+        $("#copyLog").hidden = $("#saveLog").hidden = true;
       }
 
       function classify(line) {
@@ -395,11 +709,21 @@
         return "";
       }
 
+      // Outside the parallel phase every item logs creating/processing data/executing; inside it, "finished item".
+      function countProgress(line) {
+        if (!progress.total) return;
+        if (line.includes("entering main parallel loop")) progress.parallel = true;
+        else if (line.includes("finished main parallel loop")) progress.parallel = false;
+        else if (progress.parallel ? line.startsWith("pg_restore: finished item") : /^pg_restore: (creating|processing data|executing) /.test(line)) progress.done++;
+      }
+
       function appendLog(text) {
         if (log.querySelector(".empty")) log.textContent = "";
         const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
         const frag = document.createDocumentFragment();
         for (const line of text.replace(/\n$/, "").split("\n")) {
+          logText.push(line);
+          countProgress(line);
           const cls = classify(line);
           if (cls) {
             const span = document.createElement("span");
@@ -412,13 +736,29 @@
         }
         log.append(frag);
         while (log.childNodes.length > MAX_LINES) log.firstChild.remove();
-        const parts = [];
-        if (errors) parts.push(`${errors} error${errors > 1 ? "s" : ""}`);
-        if (warnings) parts.push(`${warnings} warning${warnings > 1 ? "s" : ""}`);
-        $("#counts").textContent = parts.join(" · ");
+        updateCounts();
         if (atBottom) log.scrollTop = log.scrollHeight;
+        $("#copyLog").hidden = !(caps.clipboardWrite && plugin.copy);
+        $("#saveLog").hidden = !canSave();
       }
+
       $("#clearLog").addEventListener("click", clearLog);
+      $("#copyLog").addEventListener("click", async () => {
+        try { await plugin.copy(logText.join("\n")); setMsg(t("copied"), "ok"); }
+        catch (error) { setMsg(error.message, "bad"); }
+      });
+      $("#saveLog").addEventListener("click", async () => {
+        try {
+          const bytes = new TextEncoder().encode(`${logText.join("\n")}\n`);
+          const target = await plugin.fileTransfer.beginSave({ name: `pg-backup-restore-${stamp()}.log`, contentType: "text/plain", size: bytes.length });
+          if (!target) return;
+          await plugin.fileTransfer.write(target.handleId, 0, bytes.buffer);
+          await plugin.fileTransfer.finish(target.handleId);
+          setMsg(t("logSaved"), "ok");
+        } catch (error) {
+          setMsg(error.message, "bad");
+        }
+      });
 
       // ---- saved connections (plugin storage; DBX never shares its own credentials with plugins) ----
       function renderProfiles(selected = "") {
@@ -432,16 +772,18 @@
         for (const k of CONN_FIELDS) form[k].value = p[k] ?? "";
         if (p.database) form.database.value = form.bkDatabase.value = p.database;
         $("#rememberPassword").checked = Boolean(p.password);
+        tools = null;
+        renderVersions();
         if (p.password) loadDatabases();
       });
 
       $("#saveProfile").addEventListener("click", async () => {
         const fallback = `${form.user.value}@${form.host.value}:${form.port.value}`;
-        const name = (profileSel.value || window.prompt?.("Connection name", fallback) || fallback).trim();
+        const name = (profileSel.value || window.prompt?.(t("savedConnection"), fallback) || fallback).trim();
         const entry = { name, ...connParams(), database: (mode === "backup" ? form.bkDatabase : form.database).value };
         if (!$("#rememberPassword").checked) delete entry.password;
         profiles = [...profiles.filter((p) => p.name !== name), entry].sort((a, b) => a.name.localeCompare(b.name));
-        try { await plugin.storage.set("profiles", profiles); renderProfiles(name); setMsg(`Saved "${name}"`, "ok"); }
+        try { await plugin.storage.set("profiles", profiles); renderProfiles(name); setMsg(t("saved", { name }), "ok"); }
         catch (error) { setMsg(error.message, "bad"); }
       });
 
@@ -449,9 +791,77 @@
         if (!profileSel.value) return;
         const name = profileSel.value;
         profiles = profiles.filter((p) => p.name !== name);
-        try { await plugin.storage.set("profiles", profiles); renderProfiles(); setMsg(`Deleted "${name}"`); }
+        try { await plugin.storage.set("profiles", profiles); renderProfiles(); setMsg(t("deleted", { name })); }
         catch (error) { setMsg(error.message, "bad"); }
       });
+
+      // ---- versions ----
+      function renderVersions() {
+        const box = $("#versions");
+        box.replaceChildren();
+        if (!tools) return;
+        const server = tools.server;
+        const chip = (text, cls = "") => {
+          const el = document.createElement("span");
+          el.className = `ver ${cls}`;
+          el.textContent = text;
+          box.append(el);
+        };
+        chip(server ? `${t("serverLabel")} ${server.version.split(" ")[0]}` : `${t("serverLabel")} ?`, server ? "" : "bad");
+        for (const name of ["pg_dump", "pg_restore", "psql"]) {
+          const tool = tools.tools[name];
+          const old = server && tool.major && name !== "psql" && tool.major < server.major;
+          chip(tool.version ? `${name} ${tool.version}` : `${name} —`, !tool.version || old ? "bad" : "ok");
+        }
+      }
+
+      async function checkTools(database) {
+        tools = await rpc("tools/check", { ...connParams(), database });
+        renderVersions();
+        return tools;
+      }
+
+      $("#checkTools").addEventListener("click", async () => {
+        try { await checkTools(mode === "backup" ? form.bkDatabase.value.trim() : ""); setMsg(""); }
+        catch (error) { setMsg(error.message, "bad"); }
+      });
+
+      // Returns a blocking message (string) or null, and pushes non-blocking warnings into `warns`.
+      function compatibility(kind, params, warns) {
+        if (!tools.server) return t("serverUnreachable", { err: tools.serverError || "?" });
+        const server = tools.server;
+        const need = (name) => {
+          const tool = tools.tools[name];
+          return tool.version ? null : t("toolMissing", { tool: name });
+        };
+        const tooOld = (name) => {
+          const tool = tools.tools[name];
+          return tool.major && server.major && tool.major < server.major
+            ? t("toolTooOldForServer", { tool: name, tool_v: tool.version, server_v: server.version.split(" ")[0], server_major: server.major })
+            : null;
+        };
+        if (kind === "backup") {
+          const name = params.content === "roles" ? "pg_dumpall" : "pg_dump";
+          const block = need(name) || tooOld(name);
+          if (block) return block;
+          const method = (params.compress || "").split(":")[0];
+          const tool = tools.tools.pg_dump;
+          if ((method === "zstd" || method === "lz4") && tool.major && tool.major < 16) return t("compressNeeds16", { method, tool_v: tool.version });
+          return null;
+        }
+        const name = dump && dump.format === "archive" ? "pg_restore" : "psql";
+        const block = need(name) || (params.createDb && need("createdb"));
+        if (block) return block;
+        const dumpMajor = major(dump && dump.dumpedBy);
+        const tool = tools.tools.pg_restore;
+        if (name === "pg_restore" && dumpMajor && tool.major && tool.major < dumpMajor) {
+          return t("toolTooOldForDump", { tool_v: tool.version, dump_v: dump.dumpedBy, dump_major: dumpMajor });
+        }
+        if (dumpMajor && server.major && dumpMajor > server.major) {
+          warns.push(t("dumpNewerThanServer", { dump_v: dump.dumpedBy, server_v: server.version.split(" ")[0] }));
+        }
+        return null;
+      }
 
       // ---- database list (shared by both tabs) ----
       async function loadDatabases() {
@@ -459,43 +869,170 @@
         try {
           const { databases } = await rpc("db/list", connParams());
           $("#databases").replaceChildren(...databases.map((d) => new Option(d)));
-          setMsg(`${databases.length} databases on server — pick one from the list`, "ok");
+          setMsg(t("dbsFound", { n: databases.length }), "ok");
+          checkTools("").catch(() => {});
+          if (mode === "backup" && form.bkDatabase.value.trim()) loadObjects();
         } catch (error) {
-          setMsg(`Cannot list databases: ${error.message}`, "bad");
+          setMsg(t("cannotListDbs", { err: error.message }), "bad");
         } finally {
           $$(".load-dbs").forEach((b) => (b.disabled = false));
         }
       }
       $$(".load-dbs").forEach((b) => b.addEventListener("click", loadDatabases));
 
-      // ---- restore file selection ----
+      // ---- schema/table tree (restore: from the dump's TOC, backup: from the live database) ----
+      // A schema is either included or not; a table of an included schema can have its data switched off.
+      function makeTree(container, { sizes, onLoad }) {
+        const tree = { schemas: [], off: new Set(), offData: new Set() };
+        const key = (s, tbl) => `${s}\t${tbl}`;
+        tree.set = (schemas) => {
+          tree.schemas = schemas;
+          tree.off.clear();
+          tree.offData.clear();
+          tree.render();
+        };
+        tree.selection = () => {
+          const all = tree.off.size === 0;
+          const included = tree.schemas.filter((s) => !tree.off.has(s.name));
+          return {
+            schemas: all ? undefined : included.map((s) => s.name),
+            pairs: included.flatMap((s) => s.tables.filter((tb) => tree.offData.has(key(s.name, tb.name ?? tb))).map((tb) => [s.name, tb.name ?? tb])),
+          };
+        };
+        tree.render = () => {
+          container.replaceChildren();
+          const head = document.createElement("div");
+          head.className = "tree-head";
+          const summary = document.createElement("span");
+          const sel = tree.selection();
+          summary.textContent = tree.schemas.length
+            ? t("treeSummary", { schemas: tree.schemas.length - tree.off.size, total: tree.schemas.length, skipped: sel.pairs.length })
+            : t("treeEmpty");
+          head.append(summary);
+          const button = (label, fn) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "btn-outline";
+            b.textContent = label;
+            b.addEventListener("click", fn);
+            head.append(b);
+          };
+          if (tree.schemas.length) {
+            button(t("treeAll"), () => { tree.off.clear(); tree.offData.clear(); tree.render(); });
+            button(t("treeNone"), () => { tree.schemas.forEach((s) => tree.off.add(s.name)); tree.render(); });
+          }
+          if (onLoad) button(t("treeLoad"), onLoad);
+          container.append(head);
+          for (const schema of tree.schemas) {
+            const det = document.createElement("details");
+            det.open = tree.openSchemas?.has(schema.name) ?? false;
+            det.addEventListener("toggle", () => {
+              tree.openSchemas = tree.openSchemas || new Set();
+              det.open ? tree.openSchemas.add(schema.name) : tree.openSchemas.delete(schema.name);
+            });
+            const sum = document.createElement("summary");
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.checked = !tree.off.has(schema.name);
+            box.addEventListener("click", (e) => e.stopPropagation());
+            box.addEventListener("change", () => { box.checked ? tree.off.delete(schema.name) : tree.off.add(schema.name); tree.render(); });
+            const name = document.createElement("span");
+            name.textContent = schema.name;
+            const count = document.createElement("span");
+            count.className = "count";
+            const total = sizes ? schema.tables.reduce((n, tb) => n + (tb.size || 0), 0) : 0;
+            count.textContent = t("tablesCount", { n: schema.tables.length }) + (sizes ? ` · ${human(total)}` : "");
+            sum.append(box, name, count);
+            det.append(sum);
+            if (schema.tables.length) {
+              const label = document.createElement("div");
+              label.className = "col-label";
+              label.textContent = t("schemaOnlyCol");
+              det.append(label);
+            }
+            for (const tb of schema.tables) {
+              const tname = tb.name ?? tb;
+              const row = document.createElement("label");
+              const k = key(schema.name, tname);
+              row.className = `tbl${tree.offData.has(k) ? " off" : ""}`;
+              const cb = document.createElement("input");
+              cb.type = "checkbox";
+              cb.checked = !tree.offData.has(k);
+              cb.disabled = tree.off.has(schema.name);
+              cb.addEventListener("change", () => { cb.checked ? tree.offData.delete(k) : tree.offData.add(k); tree.render(); });
+              const span = document.createElement("span");
+              span.textContent = tname;
+              row.append(cb, span);
+              if (sizes) {
+                const small = document.createElement("small");
+                small.textContent = human(tb.size || 0);
+                row.append(small);
+              }
+              det.append(row);
+            }
+            container.append(det);
+          }
+        };
+        return tree;
+      }
+
+      trees.restore = makeTree($("#restoreTree"), { sizes: false });
+      trees.backup = makeTree($("#backupTree"), { sizes: true, onLoad: () => loadObjects() });
+
+      async function loadObjects() {
+        const database = form.bkDatabase.value.trim();
+        if (missing({ ...connParams(), database }, ["host", "port", "user", "database"])) return;
+        try {
+          const { schemas } = await rpc("db/objects", { ...connParams(), database });
+          trees.backup.set(schemas);
+          setMsg("");
+        } catch (error) {
+          setMsg(error.message, "bad");
+        }
+      }
+      form.bkDatabase.addEventListener("change", () => { trees.backup.set([]); if (form.bkDatabase.value.trim()) loadObjects(); });
+
+      // ---- restore source: pick/drop (copied to a temp file right away) or a typed path, then inspect ----
       function showFile(name, sub) {
         $("#fileName").textContent = name;
         $("#fileSub").textContent = sub;
       }
 
-      function usePicked(file) {
-        if (!file) return;
-        picked = file;
-        form.file.value = "";
-        showFile(file.name, `${mb(file.size)} · will be copied to a temp file, then restored`);
+      function renderDumpInfo() {
+        const box = $("#dumpInfo");
+        box.hidden = !dump;
+        if (!dump) return;
+        const unknown = t("unknownVersion");
+        box.innerHTML = t("dumpInfo", {
+          kind: esc(dump.format === "archive" ? t("kindArchive") : t("kindPlain")),
+          by: esc(dump.dumpedBy || unknown),
+          from: esc((dump.dumpedFrom || unknown).split(" ")[0]),
+        }) + (dump.items ? esc(t("dumpItems", { n: dump.items })) : "");
+        const owners = dump.owners || [];
+        $("#createRolesBox").hidden = !owners.length;
+        $("#rolesList").textContent = owners.slice(0, 4).join(", ") + (owners.length > 4 ? ` +${owners.length - 4}` : "");
       }
 
-      form.file.addEventListener("input", () => {
-        picked = null;
-        const path = form.file.value.trim();
-        if (path) showFile(path.split(/[\\/]/).filter(Boolean).pop() || path, "Path on this machine");
-        else showFile("No file selected", "Browse or drop a .dump / .sql / .tar file here");
-      });
-
-      $("#browse").addEventListener("click", async () => {
+      async function inspect(path) {
+        dump = null;
+        trees.restore.set([]);
+        $("#restoreTreeBox").hidden = true;
+        renderDumpInfo();
         try {
-          const { files } = await plugin.fileTransfer.pick({ multiple: false });
-          usePicked(files && files[0]);
+          dump = await rpc("dump/inspect", { path, binDir: form.binDir.value.trim() });
+          if (dump.format === "archive") {
+            trees.restore.set(dump.schemas);
+            $("#restoreTreeBox").hidden = false;
+          }
+          renderDumpInfo();
         } catch (error) {
-          setMsg(error.message, "bad");
+          setMsg(t("inspectFailed", { err: error.message }), "bad");
         }
-      });
+      }
+
+      async function deleteTemp() {
+        if (source && source.temp) await rpc("download/delete", { path: source.path }).catch(() => {});
+      }
 
       // Streams the picked file to the sidecar's temp dir; returns the path to restore from.
       async function uploadPicked() {
@@ -503,52 +1040,157 @@
         await rpc("upload/begin", { name });
         let pos = 0;
         for (;;) {
-          if (cancelled) throw new Error("Cancelled");
           const chunk = await plugin.fileTransfer.read(handleId, pos, CHUNK);
           if (chunk.length) await rpc("upload/chunk", { dataBase64: chunk.dataBase64 });
           pos += chunk.length;
-          setPill("running", `Copying ${size ? Math.min(100, Math.round((pos / size) * 100)) : 0}%`);
+          showFile(name, t("uploading", { size: human(size), pct: size ? Math.min(100, Math.round((pos / size) * 100)) : 0 }));
           if (chunk.eof || !chunk.length) break;
         }
         const { path } = await rpc("upload/finish");
+        showFile(name, t("selected", { size: human(size) }));
         return path;
       }
 
-      // ---- backup output ----
+      async function usePicked(file) {
+        if (!file) return;
+        await deleteTemp();
+        picked = file;
+        form.file.value = "";
+        const uploading = uploadPicked();
+        source = { temp: true, path: null, uploading };
+        try {
+          source.path = await uploading;
+          source.uploading = null;
+          await inspect(source.path);
+        } catch (error) {
+          source = null;
+          showFile(file.name, error.message);
+        }
+      }
+
+      form.file.addEventListener("input", () => {
+        const path = form.file.value.trim();
+        if (path) showFile(path.split(/[\\/]/).filter(Boolean).pop() || path, t("pathOnMachine"));
+        else showFile(t("noFile"), t("dropHint"));
+      });
+      form.file.addEventListener("change", async () => {
+        const path = form.file.value.trim();
+        await deleteTemp();
+        picked = null;
+        source = path ? { temp: false, path } : null;
+        dump = null;
+        if (path) await inspect(path);
+        else { trees.restore.set([]); $("#restoreTreeBox").hidden = true; renderDumpInfo(); }
+      });
+
+      $("#browse").addEventListener("click", async () => {
+        try {
+          const { files } = await plugin.fileTransfer.pick({ multiple: false });
+          await usePicked(files && files[0]);
+        } catch (error) {
+          setMsg(error.message, "bad");
+        }
+      });
+
+      // The sidecar deletes a temp copy after restoring it, so a second run re-uploads from the same handle.
+      async function restorePath() {
+        if (!source) return null;
+        if (source.uploading) await source.uploading;
+        if (source.temp && source.consumed && picked) {
+          source.path = await uploadPicked();
+          source.consumed = false;
+        }
+        return source.path;
+      }
+
+      // ---- backup form ----
       function updateBackupForm() {
-        const dir = form.bkFormat.value === "d";
-        $("#bkAdvanced").hidden = !dir;
-        $("#saveHint").textContent = dir
-          ? "Directory format writes many files — type an output directory path below."
-          : canSave()
-            ? "You'll choose where to save when the backup starts."
-            : "Type an absolute output path below.";
+        const roles = form.bkContent.value === "roles";
+        const format = form.bkFormat.value;
+        $$("[data-db-only]").forEach((el) => (el.hidden = roles));
+        $$("[data-roles-only]").forEach((el) => (el.hidden = !roles));
+        $("#rolesHint").hidden = !roles;
+        $("#compressBox").hidden = roles || !["c", "d"].includes(format);
+        $("#bkAdvanced").hidden = roles || format !== "d";
+        const old = tools && tools.tools.pg_dump.major && tools.tools.pg_dump.major < 16;
+        $$("[data-modern]").forEach((o) => (o.disabled = Boolean(old)));
+        if (form.bkCompress.selectedOptions[0]?.disabled) form.bkCompress.value = "";
+        $("#saveHint").textContent = !roles && format === "d" ? t("saveHintDir") : canSave() ? t("saveHintDialog") : t("saveHintPath");
       }
       form.bkFormat.addEventListener("change", updateBackupForm);
+      $$('input[name="bkContent"]').forEach((r) => r.addEventListener("change", updateBackupForm));
 
-      function backupName(db, format) {
+      function stamp() {
         const d = new Date();
         const pad = (n) => String(n).padStart(2, "0");
-        const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-        return `${db}_${stamp}.${EXT[format]}`;
+        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
       }
-
-      const toBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
       // Copies the finished temp backup into the user's save target, then removes the temp file.
       async function streamToSave(path, target) {
         const step = Math.min(target.chunkBytes || CHUNK, 4 * CHUNK);
         let pos = 0;
         for (;;) {
-          if (cancelled) throw new Error("Cancelled");
+          if (cancelled) throw new Error(t("cancelled"));
           const chunk = await rpc("download/read", { path, offset: pos, length: step });
           if (chunk.length) await plugin.fileTransfer.write(target.handleId, pos, toBytes(chunk.dataBase64).buffer);
           pos += chunk.length;
-          setPill("running", `Saving ${chunk.size ? Math.min(100, Math.round((pos / chunk.size) * 100)) : 100}%`);
+          setPill("running", t("saving", { pct: chunk.size ? Math.min(100, Math.round((pos / chunk.size) * 100)) : 100 }));
           if (chunk.eof || !chunk.length) break;
         }
         await plugin.fileTransfer.finish(target.handleId);
         return pos;
+      }
+
+      // ---- history ----
+      function renderHistory() {
+        const box = $("#history");
+        box.replaceChildren();
+        $("#historyCard").hidden = mode !== "backup" || !history.length;
+        for (const h of history) {
+          const row = document.createElement("div");
+          row.className = "hist";
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = h.name;
+          const sub = document.createElement("div");
+          sub.className = "sub";
+          sub.textContent = [h.database, new Date(h.at).toLocaleString(lang), h.size ? human(h.size) : null, h.path || null].filter(Boolean).join(" · ");
+          meta.append(name, sub);
+          row.append(meta);
+          if (h.content !== "roles" || h.path || canPick()) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "btn-outline";
+            b.textContent = h.path ? t("restoreThis") : t("restorePick");
+            b.disabled = !h.path && !canPick();
+            b.addEventListener("click", () => restoreFromHistory(h));
+            row.append(b);
+          }
+          box.append(row);
+        }
+      }
+
+      const canPick = () => Boolean(plugin.fileTransfer && caps.fileTransfer && caps.fileTransfer.pick);
+
+      async function restoreFromHistory(h) {
+        selectTab("restore");
+        if (h.content !== "roles") form.database.value = h.database;
+        if (h.path) {
+          form.file.value = h.path;
+          form.file.dispatchEvent(new Event("input"));
+          form.file.dispatchEvent(new Event("change"));
+        } else {
+          $("#browse").click();
+        }
+      }
+
+      async function addHistory(entry) {
+        history = [entry, ...history].slice(0, MAX_HISTORY);
+        renderHistory();
+        if (caps.storage && plugin.storage) await plugin.storage.set("history", history).catch(() => {});
       }
 
       // ---- job lifecycle ----
@@ -558,98 +1200,136 @@
           try {
             s = await rpc("restore/status", { offset });
           } catch (error) {
-            setMsg(`Status error: ${error.message}`, "bad");
+            setMsg(t("statusError", { err: error.message }), "bad");
             await sleep(3000);
             continue;
           }
           if (s.log) appendLog(s.log);
           offset = s.offset;
           if (!s.running) return s.exitCode;
-          setPill("running", "Running");
+          setPill("running", progress.total ? t("runningPct", { pct: Math.min(99, Math.floor((progress.done / progress.total) * 100)) }) : t("running"));
           await sleep(1000);
         }
       }
 
       function report(code, what) {
         if (code === 0) {
-          setPill("done", "Completed");
-          setMsg(errors ? `${what} finished; some statements reported errors — review the output.` : `${what} completed successfully.`, "ok");
+          setPill("done", t("completed"));
+          setMsg(errors ? t("doneWithErrors", { what }) : t("doneOk", { what }), "ok");
         } else if (code != null) {
           // pg_restore exits 1 when it only hit ignorable errors (e.g. missing roles); check the log.
-          setPill("failed", `Exit ${code}`);
-          setMsg(`${what} finished with errors — review the highlighted lines.`, "bad");
+          setPill("failed", t("exitCode", { code }));
+          setMsg(t("doneFailed", { what }), "bad");
         }
       }
 
       async function beginRun() {
         cancelled = false;
+        progress.total = progress.done = 0;
+        progress.parallel = false;
         clearLog();
         setRunning(true);
-        setMsg("");
-        setPill("running", "Starting");
+        setPill("running", t("starting"));
         offset = (await rpc("restore/status", { offset: Number.MAX_SAFE_INTEGER })).offset; // skip previous runs
       }
 
+      // Version check before anything runs; a block stops the run, warnings are shown and logged.
+      async function preflight(kind, params) {
+        await checkTools(params.database);
+        const warns = [];
+        const block = compatibility(kind, params, warns);
+        if (block) {
+          setPill("failed", t("failed"));
+          setMsg(block, "bad");
+          return false;
+        }
+        for (const w of warns) appendLog(`warning: ${w}\n`);
+        if (warns.length) setMsg(warns.join(" "), "warn");
+        return true;
+      }
+
       async function runRestore() {
+        const sel = trees.restore.selection();
         const params = {
           ...connParams(),
           database: form.database.value.trim(),
-          file: form.file.value.trim(),
           jobs: Number(form.jobs.value) || 1,
           createDb: form.createDb.checked,
+          createRoles: form.createRoles.checked && !$("#createRolesBox").hidden,
           clean: form.clean.checked,
           noOwner: form.noOwner.checked,
           resetDb: form.resetDb.checked,
+          schemas: dump && dump.format === "archive" ? sel.schemas : undefined,
+          skipData: dump && dump.format === "archive" ? sel.pairs : [],
         };
         if (missing(params, ["host", "port", "user", "database"])) return;
-        if (!picked && !params.file) { setMsg("Choose a dump file first.", "bad"); return; }
+        if (!source) { setMsg(t("chooseFile"), "bad"); return; }
         if (params.resetDb && !armed) {
           armed = true;
-          $("#startLabel").textContent = "Confirm: wipe & restore";
-          setMsg(`All schemas and data in "${params.database}" on ${params.host}:${params.port} will be permanently dropped. Click again to confirm.`, "bad");
+          updateStartLabel();
+          setMsg(t("wipeWarning", { db: params.database, host: params.host, port: params.port }), "bad");
           return;
         }
         armed = false;
         updateStartLabel();
+        setMsg("");
         await beginRun();
-        if (picked) params.file = await uploadPicked();
-        await rpc("restore/start", params);
-        report(await waitForJob(), "Restore");
+        if (!(await preflight("restore", params))) return;
+        params.file = await restorePath();
+        const started = await rpc("restore/start", params);
+        if (source.temp) source.consumed = true;
+        progress.total = started.items || 0;
+        report(await waitForJob(), t("whatRestore"));
       }
 
       async function runBackup() {
-        const format = form.bkFormat.value;
+        const content = form.bkContent.value;
+        const roles = content === "roles";
+        const format = roles ? "p" : form.bkFormat.value;
+        const sel = trees.backup.selection();
         const params = {
           ...connParams(),
-          database: form.bkDatabase.value.trim(),
+          database: form.bkDatabase.value.trim() || (roles ? "postgres" : ""),
           format,
-          content: form.bkContent.value,
+          content,
           noOwner: form.bkNoOwner.checked,
           clean: form.bkClean.checked,
+          noRolePasswords: form.bkNoRolePasswords.checked,
           jobs: Number(form.bkJobs.value) || 1,
+          compress: roles || !["c", "d"].includes(format) ? "" : form.bkCompress.value,
+          schemas: roles ? undefined : sel.schemas,
+          excludeData: roles ? [] : sel.pairs,
           output: form.bkOutput.value.trim(),
         };
         if (missing(params, ["host", "port", "user", "database"])) return;
-        if (!params.output && (format === "d" || !canSave())) { setMsg("Type an output path for this backup.", "bad"); return; }
+        if (!params.output && (format === "d" || !canSave())) { setMsg(t("outputNeeded"), "bad"); return; }
 
+        const name = roles ? `roles_${params.host}_${stamp()}.sql` : `${params.database}_${stamp()}.${EXT[format] || "dump"}`;
         // Ask for the save location first, while this click still counts as a user gesture.
         let target = null;
         if (!params.output) {
-          params.name = backupName(params.database, format);
-          target = await plugin.fileTransfer.beginSave({ name: params.name, contentType: "application/octet-stream" });
-          if (!target) { setMsg("Backup cancelled."); return; }
+          params.name = name;
+          target = await plugin.fileTransfer.beginSave({ name, contentType: "application/octet-stream" });
+          if (!target) { setMsg(t("backupCancelled")); return; }
         }
+        setMsg("");
         let temp = null;
         try {
           await beginRun();
+          if (!(await preflight("backup", params))) return;
           temp = (await rpc("backup/start", params)).path;
           const code = await waitForJob();
+          let size = null;
           if (code === 0 && target) {
-            const bytes = await streamToSave(temp, target);
+            size = await streamToSave(temp, target);
             target = null;
-            appendLog(`Saved ${params.name} (${mb(bytes)})\n`);
+            appendLog(`${t("savedFile", { name, size: mb(size) })}\n`);
           }
-          report(code, "Backup");
+          if (code === 0) {
+            await addHistory({ name: params.output ? params.output.split(/[\\/]/).pop() : name, database: params.database, content, format,
+              at: new Date().toISOString(), size, path: params.output && format !== "d" ? params.output : null });
+          }
+          report(code, t("whatBackup"));
         } finally {
           if (target) await plugin.fileTransfer.cancel(target.handleId).catch(() => {});
           if (!params.output && temp) await rpc("download/delete", { path: temp }).catch(() => {});
@@ -661,7 +1341,7 @@
         try {
           await (mode === "backup" ? runBackup() : runRestore());
         } catch (error) {
-          setPill("failed", cancelled ? "Cancelled" : "Failed");
+          setPill("failed", cancelled ? t("cancelled") : t("failed"));
           setMsg(error.message, "bad");
         } finally {
           setRunning(false);
@@ -690,7 +1370,10 @@
         const appearance = plugin.theme && plugin.theme.appearance;
         if (appearance) document.documentElement.style.colorScheme = appearance;
       }
-      window.addEventListener("dbx-plugin-env", applyTheme);
+      window.addEventListener("dbx-plugin-env", () => {
+        applyTheme();
+        if ($("#lang").value === "auto") { lang = resolveLang("auto"); applyLang(); }
+      });
 
       plugin.ready.then(async () => {
         caps = plugin.capabilities || {};
@@ -700,27 +1383,34 @@
         plugin.onContext(applyContext);
 
         const ft = caps.fileTransfer;
-        if (plugin.fileTransfer && ft && ft.pick && ft.read) $("#browse").hidden = false;
+        if (canPick() && ft.read) $("#browse").hidden = false;
         if (plugin.fileTransfer && ft && ft.drop) {
           plugin.fileTransfer.onDrop((files) => { selectTab("restore"); usePicked(files[0]); });
           plugin.fileTransfer.onDragState((active) => $("#drop").classList.toggle("active", active));
-        } else if (!(ft && ft.pick)) {
-          showFile("No file selected", "Type the absolute path of the dump below");
         }
-        updateBackupForm();
 
         if (caps.storage && plugin.storage) {
           $("#profileBox").hidden = false;
           $("#rememberBox").hidden = false;
-          try { profiles = (await plugin.storage.get("profiles")) || []; renderProfiles(); }
-          catch (error) { setMsg(error.message, "bad"); }
+          try {
+            const [savedProfiles, savedHistory, savedLang] = await Promise.all(["profiles", "history", "lang"].map((k) => plugin.storage.get(k)));
+            profiles = savedProfiles || [];
+            history = savedHistory || [];
+            if (savedLang) $("#lang").value = savedLang;
+            renderProfiles();
+          } catch (error) {
+            setMsg(error.message, "bad");
+          }
         }
+        lang = resolveLang($("#lang").value);
+        applyLang();
+        if (!(ft && ft.pick)) showFile(t("noFile"), t("pathPlaceholder"));
 
         // Reattach to a job still running from a previous tab.
         const s = await rpc("restore/status", { offset: 0 }).catch(() => null);
         if (s && s.running) {
           setRunning(true);
-          report(await waitForJob(), "Job");
+          report(await waitForJob(), t("whatJob"));
           setRunning(false);
         } else if (s && s.log) {
           appendLog(s.log);

@@ -3,7 +3,7 @@
   "manifest_version": 1,
   "id": "alvinades98.pg-backup-restore",
   "name": "PG Backup & Restore",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "alvinades98",
   "description": "Back up and restore PostgreSQL databases (custom, tar, directory or plain SQL) using pg_dump / pg_restore / psql.",
   "icon": "assets/plugin.png",
@@ -53,6 +53,19 @@
         },
         "alvinades98.pg-backup-restore.open": {
           "label": "Backup / restore PostgreSQL…"
+        }
+      }
+    },
+    "zh-CN": {
+      "name": "PG 备份与恢复",
+      "description": "使用 pg_dump / pg_restore / psql 备份和恢复 PostgreSQL 数据库（custom、tar、目录或纯 SQL 格式）。",
+      "contributions": {
+        "alvinades98.pg-backup-restore.workbench": {
+          "label": "PG 备份与恢复",
+          "description": "备份或恢复 PostgreSQL 数据库。"
+        },
+        "alvinades98.pg-backup-restore.open": {
+          "label": "备份 / 恢复 PostgreSQL…"
         }
       }
     }
