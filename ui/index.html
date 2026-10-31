@@ -655,6 +655,8 @@
       function setMsg(text, cls = "") {
         msg.textContent = text;
         msg.className = `msg ${cls}`;
+        // Errors also go to the Output panel: the footer line is easy to miss (issue #1).
+        if (cls === "bad" && text) appendLog(`error: ${text}\n`);
       }
 
       function setPill(state, text) {

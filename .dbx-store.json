@@ -15,7 +15,7 @@
   "source": "https://github.com/alvinades98/dbx-pg-restore",
   "homepage": "https://github.com/alvinades98/dbx-pg-restore",
   "license": "Apache-2.0",
-  "releaseNotes": "SSL mode (PGSSLMODE) for cloud servers, database list falls back to postgres/template1, optional single-transaction restore (stop on first error), ANALYZE after restore, clear message for compressed dump files.",
+  "releaseNotes": "Windows: find pg_dump / pg_restore in C:\\Program Files\\PostgreSQL\\<version>\\bin when they are not on PATH, and no console window flashes. Errors are now also shown in the Output panel.",
   "localizations": {
     "zh-CN": {
       "name": "PG 备份与恢复",

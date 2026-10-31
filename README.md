@@ -10,7 +10,8 @@ Restore PostgreSQL dumps from inside DBX. DBX's built-in "Run SQL file" only rea
 | anything else (plain SQL) | `psql -f` |
 
 Requires PostgreSQL client tools on the machine (`pg_dump`, `pg_restore`, `psql`, `createdb`). Set
-**PostgreSQL client tools → Bin directory** in the form if they are not on `PATH`.
+**PostgreSQL client tools → Bin directory** in the form if they are not on `PATH`. On Windows the plugin also looks in
+`C:\Program Files\PostgreSQL\<version>\bin` (newest version first) when the bin directory is empty.
 
 > [!WARNING]
 > - **Reset database** runs `DROP SCHEMA … CASCADE` on every schema of the target database. Only use it after you

@@ -129,7 +129,42 @@ fn lock(job: &Arc<Mutex<Job>>) -> MutexGuard<'_, Job> {
 
 fn tool(bin_dir: &str, name: &str) -> PathBuf {
     let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
-    if bin_dir.is_empty() { PathBuf::from(exe) } else { Path::new(bin_dir).join(exe) }
+    if !bin_dir.is_empty() {
+        return Path::new(bin_dir).join(exe);
+    }
+    // The Windows installer does not add its bin folder to PATH, so look in the default install location.
+    if cfg!(windows) && !on_path(&exe) {
+        let program_files = std::env::var_os("ProgramFiles").unwrap_or_else(|| "C:\\Program Files".into());
+        if let Some(found) = newest_install(&Path::new(&program_files).join("PostgreSQL"), &exe) {
+            return found;
+        }
+    }
+    PathBuf::from(exe)
+}
+
+fn on_path(exe: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(exe).is_file()))
+}
+
+/// `<root>/<major>/bin/<exe>` for the highest installed major version, e.g. `PostgreSQL/18/bin/pg_dump.exe`.
+fn newest_install(root: &Path, exe: &str) -> Option<PathBuf> {
+    std::fs::read_dir(root).ok()?.flatten()
+        .filter_map(|e| Some((major(&e.file_name().to_string_lossy())?, e.path().join("bin").join(exe))))
+        .filter(|(_, path)| path.is_file())
+        .max_by_key(|(v, _)| *v)
+        .map(|(_, path)| path)
+}
+
+/// A child process that does not flash a console window on Windows.
+fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
 }
 
 /// Leading major version of "18.6", "17.2 (Debian ...)" or "9.6.24".
@@ -139,7 +174,7 @@ fn major(version: &str) -> Option<u32> {
 
 /// Version reported by `<tool> --version`, e.g. "18.6" from "pg_dump (PostgreSQL) 18.6".
 fn tool_version(bin_dir: &str, name: &str) -> Option<String> {
-    let out = Command::new(tool(bin_dir, name)).arg("--version").stdin(Stdio::null()).output().ok()?;
+    let out = command(tool(bin_dir, name)).arg("--version").stdin(Stdio::null()).output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     out.status.success().then(|| text.split_whitespace().find(|w| w.starts_with(|c: char| c.is_ascii_digit())).map(String::from))?
 }
@@ -188,7 +223,7 @@ fn roles_sql(roles: &[String]) -> Option<String> {
 }
 
 fn read_toc(params: &Value, file: &str) -> Result<toc::Toc, PluginError> {
-    let out = Command::new(tool(str_param(params, "binDir"), "pg_restore"))
+    let out = command(tool(str_param(params, "binDir"), "pg_restore"))
         .arg("-l").arg(file).stdin(Stdio::null()).output()
         .map_err(|err| PluginError::new(-32000, format!("Failed to start pg_restore: {err}")))?;
     if !out.status.success() {
@@ -245,7 +280,7 @@ fn cleanup_temp_dir() {
 }
 
 fn base_command(params: &Value, name: &str) -> Command {
-    let mut cmd = Command::new(tool(str_param(params, "binDir"), name));
+    let mut cmd = command(tool(str_param(params, "binDir"), name));
     cmd.arg("-h").arg(str_param(params, "host"))
         .arg("-p").arg(str_param(params, "port"))
         .arg("-U").arg(str_param(params, "user"))
@@ -850,6 +885,22 @@ mod tests {
         assert!(!tar.contains("-Z"), "tar archives are not compressed by pg_dump");
         let roles = describe(&build_backup(&json!({ "content": "roles", "database": "postgres", "noRolePasswords": true }), Path::new("/r.sql")));
         assert!(roles.starts_with("pg_dumpall ") && roles.contains("-l postgres --globals-only -f /r.sql --verbose --no-role-passwords"));
+    }
+
+    #[test]
+    fn finds_newest_install() {
+        let root = std::env::temp_dir().join(format!("pgr-install-{}", std::process::id()));
+        for (v, has) in [("13", true), ("18", true), ("19", false), ("pgAdmin 4", true)] {
+            let bin = root.join(v).join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            if has {
+                std::fs::write(bin.join("pg_dump.exe"), b"").unwrap();
+            }
+        }
+        assert_eq!(newest_install(&root, "pg_dump.exe"), Some(root.join("18").join("bin").join("pg_dump.exe")));
+        assert_eq!(newest_install(&root, "psql.exe"), None);
+        assert_eq!(newest_install(&root.join("missing"), "pg_dump.exe"), None);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
