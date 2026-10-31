@@ -228,6 +228,15 @@
             <summary><svg><use href="#i-chev" /></svg><span data-i18n="clientTools">PostgreSQL client tools</span></summary>
             <div class="grid">
               <label class="field c6"><span data-i18n="binDir">Bin directory</span><input type="text" name="binDir" data-i18n-placeholder="binDirPlaceholder" placeholder="Empty = use PATH, e.g. /usr/lib/postgresql/18/bin" /></label>
+              <label class="field c6"><span data-i18n="sslMode">SSL mode</span>
+                <select name="sslMode">
+                  <option value="" data-i18n="sslDefault">Default (prefer)</option>
+                  <option value="disable">disable</option>
+                  <option value="require">require</option>
+                  <option value="verify-ca">verify-ca</option>
+                  <option value="verify-full">verify-full</option>
+                </select>
+              </label>
               <div class="hint c6" data-i18n="binDirHint">pg_dump / pg_restore must be compatible with the server: use the same major version as the server (and as the dump being restored), or newer.</div>
               <div class="c6"><button id="checkTools" type="button" class="btn-outline" data-i18n="checkVersions">Check versions</button></div>
             </div>
@@ -271,6 +280,8 @@
               <label class="opt" id="createRolesBox" hidden><input type="checkbox" name="createRoles" /><span class="txt"><b data-i18n="optCreateRoles">Create missing roles</b><small id="rolesList"></small></span></label>
               <label class="opt"><input type="checkbox" name="noOwner" checked /><span class="txt"><b data-i18n="optNoOwner">Skip owner &amp; grants</b><small>--no-owner --no-privileges</small></span></label>
               <label class="opt"><input type="checkbox" name="clean" /><span class="txt"><b data-i18n="optClean">Drop objects in the dump first</b><small>--clean --if-exists</small></span></label>
+              <label class="opt"><input type="checkbox" name="singleTransaction" /><span class="txt"><b data-i18n="optSingleTx">Stop on first error (single transaction)</b><small>--single-transaction · psql -1</small></span></label>
+              <label class="opt"><input type="checkbox" name="analyze" checked /><span class="txt"><b data-i18n="optAnalyze">Update statistics after restore</b><small>ANALYZE</small></span></label>
               <label class="opt danger"><input type="checkbox" name="resetDb" /><span class="txt"><b data-i18n="optReset">Reset database</b><small data-i18n="optResetHint">Drops ALL schemas (incl. public, CASCADE), recreates an empty public, then restores. Only use it once you have a backup you know works.</small></span></label>
             </div>
           </div>
@@ -279,7 +290,7 @@
             <summary><svg><use href="#i-chev" /></svg><span data-i18n="advanced">Advanced</span></summary>
             <div class="grid">
               <label class="field c2"><span data-i18n="jobs">Parallel jobs</span><input type="number" name="jobs" min="1" max="32" value="1" /></label>
-              <div class="hint c4" style="align-self: end; padding-bottom: 8px" data-i18n="jobsRestoreHint">Applies to custom and directory archives.</div>
+              <div class="hint c4" style="align-self: end; padding-bottom: 8px" data-i18n="jobsRestoreHint">Custom and directory archives only; ignored with single transaction.</div>
             </div>
           </details>
         </section>
@@ -398,7 +409,7 @@
           rememberPassword: "Remember password when saving this connection",
           clientTools: "PostgreSQL client tools", binDir: "Bin directory", binDirPlaceholder: "Empty = use PATH, e.g. /usr/lib/postgresql/18/bin",
           binDirHint: "pg_dump / pg_restore must be compatible with the server: use the same major version as the server (and as the dump being restored), or newer.",
-          checkVersions: "Check versions",
+          checkVersions: "Check versions", sslMode: "SSL mode", sslDefault: "Default (prefer)",
           targetDb: "Target database", targetDbPlaceholder: "Pick from list or type a new name", loadDbs: "Load databases from server",
           dumpFile: "Dump file", noFile: "No file selected", dropHint: "Browse or drop a .dump / .sql / .tar file here", browse: "Browse…",
           pathPlaceholder: "…or type an absolute path (required for directory dumps)", pathOnMachine: "Path on this machine",
@@ -408,8 +419,8 @@
           options: "Options", optCreateDb: "Create database first", optCreateRoles: "Create missing roles (NOLOGIN)",
           optNoOwner: "Skip owner & grants", optClean: "Drop objects in the dump first", optReset: "Reset database",
           optResetHint: "Drops ALL schemas (incl. public, CASCADE), recreates an empty public, then restores. Only use it once you have a backup you know works.",
-          optDrops: "Include DROP statements", optNoRolePasswords: "Leave out role passwords",
-          advanced: "Advanced", jobs: "Parallel jobs", jobsRestoreHint: "Applies to custom and directory archives.", jobsBackupHint: "Directory format only.",
+          optDrops: "Include DROP statements", optSingleTx: "Stop on first error (single transaction)", optAnalyze: "Update statistics after restore", optNoRolePasswords: "Leave out role passwords",
+          advanced: "Advanced", jobs: "Parallel jobs", jobsRestoreHint: "Custom and directory archives only; ignored with single transaction.", jobsBackupHint: "Directory format only.",
           sourceDb: "Source database", sourceDbPlaceholder: "Pick from list",
           content: "Content", contentAll: "Schema + data", contentSchema: "Schema only", contentData: "Data only", contentRoles: "Roles",
           rolesHint: "Roles and tablespaces of the whole server (pg_dumpall --globals-only) as a .sql file. Restore it with the Restore tab before restoring database dumps.",
@@ -455,7 +466,7 @@
           rememberPassword: "Ingat password saat menyimpan koneksi ini",
           clientTools: "PostgreSQL client tools", binDir: "Folder bin", binDirPlaceholder: "Kosong = pakai PATH, mis. /usr/lib/postgresql/18/bin",
           binDirHint: "pg_dump / pg_restore harus kompatibel dengan server: pakai versi mayor yang sama dengan server (dan dengan dump yang di-restore) atau lebih baru.",
-          checkVersions: "Cek versi",
+          checkVersions: "Cek versi", sslMode: "Mode SSL", sslDefault: "Default (prefer)",
           targetDb: "Database tujuan", targetDbPlaceholder: "Pilih dari daftar atau ketik nama baru", loadDbs: "Ambil daftar database dari server",
           dumpFile: "File dump", noFile: "Belum ada file", dropHint: "Pilih atau drop file .dump / .sql / .tar di sini", browse: "Pilih…",
           pathPlaceholder: "…atau ketik path absolut (wajib untuk dump format direktori)", pathOnMachine: "Path di mesin ini",
@@ -465,8 +476,8 @@
           options: "Opsi", optCreateDb: "Buat database dulu", optCreateRoles: "Buat role yang belum ada (NOLOGIN)",
           optNoOwner: "Lewati owner & grant", optClean: "Hapus objek di dump terlebih dulu", optReset: "Reset database",
           optResetHint: "Menghapus SEMUA schema (termasuk public, CASCADE), membuat public kosong, lalu restore. Pakai hanya jika kamu punya backup yang sudah pasti bisa dipakai.",
-          optDrops: "Sertakan perintah DROP", optNoRolePasswords: "Tanpa password role",
-          advanced: "Lanjutan", jobs: "Job paralel", jobsRestoreHint: "Berlaku untuk arsip custom dan direktori.", jobsBackupHint: "Hanya format direktori.",
+          optDrops: "Sertakan perintah DROP", optSingleTx: "Berhenti di error pertama (satu transaksi)", optAnalyze: "Perbarui statistik setelah restore", optNoRolePasswords: "Tanpa password role",
+          advanced: "Lanjutan", jobs: "Job paralel", jobsRestoreHint: "Hanya arsip custom dan direktori; diabaikan saat satu transaksi.", jobsBackupHint: "Hanya format direktori.",
           sourceDb: "Database sumber", sourceDbPlaceholder: "Pilih dari daftar",
           content: "Isi", contentAll: "Schema + data", contentSchema: "Schema saja", contentData: "Data saja", contentRoles: "Role",
           rolesHint: "Role dan tablespace seluruh server (pg_dumpall --globals-only) sebagai file .sql. Restore lewat tab Restore sebelum me-restore dump database.",
@@ -512,7 +523,7 @@
           rememberPassword: "保存连接时记住密码",
           clientTools: "PostgreSQL 客户端工具", binDir: "bin 目录", binDirPlaceholder: "留空则使用 PATH，例如 /usr/lib/postgresql/18/bin",
           binDirHint: "pg_dump / pg_restore 必须与服务器兼容：主版本号需不低于服务器（以及待恢复的转储文件）的主版本号。",
-          checkVersions: "检查版本",
+          checkVersions: "检查版本", sslMode: "SSL 模式", sslDefault: "默认（prefer）",
           targetDb: "目标数据库", targetDbPlaceholder: "从列表选择或输入新名称", loadDbs: "从服务器加载数据库列表",
           dumpFile: "转储文件", noFile: "未选择文件", dropHint: "浏览或将 .dump / .sql / .tar 文件拖到这里", browse: "浏览…",
           pathPlaceholder: "…或输入绝对路径（目录格式转储必须）", pathOnMachine: "本机路径",
@@ -522,8 +533,8 @@
           options: "选项", optCreateDb: "先创建数据库", optCreateRoles: "创建缺失的角色（NOLOGIN）",
           optNoOwner: "跳过所有者和授权", optClean: "先删除转储中的对象", optReset: "重置数据库",
           optResetHint: "删除目标库中所有模式（包括 public，CASCADE），重建空的 public 后再恢复。请仅在确认备份可用后使用。",
-          optDrops: "包含 DROP 语句", optNoRolePasswords: "不包含角色密码",
-          advanced: "高级", jobs: "并行任务数", jobsRestoreHint: "适用于 custom 和目录格式。", jobsBackupHint: "仅目录格式。",
+          optDrops: "包含 DROP 语句", optSingleTx: "遇到第一个错误即停止（单事务）", optAnalyze: "恢复后更新统计信息", optNoRolePasswords: "不包含角色密码",
+          advanced: "高级", jobs: "并行任务数", jobsRestoreHint: "仅适用于 custom 和目录格式；单事务时忽略。", jobsBackupHint: "仅目录格式。",
           sourceDb: "源数据库", sourceDbPlaceholder: "从列表选择",
           content: "内容", contentAll: "结构 + 数据", contentSchema: "仅结构", contentData: "仅数据", contentRoles: "角色",
           rolesHint: "整个服务器的角色和表空间（pg_dumpall --globals-only），保存为 .sql 文件。请在恢复数据库转储之前，先通过“恢复”标签页恢复它。",
@@ -573,7 +584,7 @@
       const cancelBtn = $("#cancel");
       const profileSel = $("#profile");
       const plugin = window.dbxPlugin;
-      const CONN_FIELDS = ["host", "port", "user", "password", "binDir"];
+      const CONN_FIELDS = ["host", "port", "user", "password", "binDir", "sslMode"];
       const CHUNK = 1024 * 1024;
       const MAX_LINES = 5000;
       const MAX_HISTORY = 20;
@@ -867,7 +878,8 @@
       async function loadDatabases() {
         $$(".load-dbs").forEach((b) => (b.disabled = true));
         try {
-          const { databases } = await rpc("db/list", connParams());
+          const database = (mode === "backup" ? form.bkDatabase : form.database).value.trim();
+          const { databases } = await rpc("db/list", { ...connParams(), database });
           $("#databases").replaceChildren(...databases.map((d) => new Option(d)));
           setMsg(t("dbsFound", { n: databases.length }), "ok");
           checkTools("").catch(() => {});
@@ -1259,6 +1271,8 @@
           clean: form.clean.checked,
           noOwner: form.noOwner.checked,
           resetDb: form.resetDb.checked,
+          singleTransaction: form.singleTransaction.checked,
+          analyze: form.analyze.checked,
           schemas: dump && dump.format === "archive" ? sel.schemas : undefined,
           skipData: dump && dump.format === "archive" ? sel.pairs : [],
         };

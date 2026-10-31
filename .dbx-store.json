@@ -15,7 +15,7 @@
   "source": "https://github.com/alvinades98/dbx-pg-restore",
   "homepage": "https://github.com/alvinades98/dbx-pg-restore",
   "license": "Apache-2.0",
-  "releaseNotes": "Selective restore and backup (schemas, skip table data), client/server version check before every run, restore progress in percent, create missing roles, roles backup (pg_dumpall --globals-only), backup history, copy/save log, zstd/lz4/gzip compression levels, English/Indonesian/Chinese UI.",
+  "releaseNotes": "SSL mode (PGSSLMODE) for cloud servers, database list falls back to postgres/template1, optional single-transaction restore (stop on first error), ANALYZE after restore, clear message for compressed dump files.",
   "localizations": {
     "zh-CN": {
       "name": "PG 备份与恢复",

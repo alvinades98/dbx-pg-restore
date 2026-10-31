@@ -81,15 +81,38 @@ enum Format {
     Plain,   // plain SQL -> psql
 }
 
+/// Magic bytes of compressed files that psql / pg_restore cannot read directly.
+const COMPRESSED: [(&[u8], &str); 5] = [
+    (b"\x1f\x8b", "gzip"),
+    (b"BZh", "bzip2"),
+    (b"\xfd7zXZ\x00", "xz"),
+    (b"\x28\xb5\x2f\xfd", "zstd"),
+    (b"PK\x03\x04", "zip"),
+];
+
+fn read_head(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut head = Vec::with_capacity(512);
+    File::open(path)?.take(512).read_to_end(&mut head)?;
+    Ok(head)
+}
+
+fn is_tar(head: &[u8]) -> bool {
+    head.len() >= 262 && &head[257..262] == b"ustar"
+}
+
+// ponytail: compressed files are refused rather than decompressed; add a streaming decoder if users ask for .gz.
 fn detect_format(path: &Path) -> std::io::Result<Format> {
     if path.is_dir() {
         return Ok(Format::Archive);
     }
-    let mut head = Vec::with_capacity(512);
-    File::open(path)?.take(512).read_to_end(&mut head)?;
-    let custom = head.starts_with(b"PGDMP");
-    let tar = head.len() >= 262 && &head[257..262] == b"ustar";
-    Ok(if custom || tar { Format::Archive } else { Format::Plain })
+    let head = read_head(path)?;
+    if let Some((_, kind)) = COMPRESSED.iter().find(|(magic, _)| head.starts_with(magic)) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("the file is {kind}-compressed; decompress it first (it should contain a .sql, .dump or .tar)"),
+        ));
+    }
+    Ok(if head.starts_with(b"PGDMP") || is_tar(&head) { Format::Archive } else { Format::Plain })
 }
 
 fn str_param<'a>(params: &'a Value, key: &str) -> &'a str {
@@ -185,6 +208,8 @@ fn plain_header(path: &Path) -> (Option<String>, Option<String>) {
     (find("-- Dumped by pg_dump version "), find("-- Dumped from database version "))
 }
 
+const SSL_MODES: [&str; 6] = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"];
+
 fn query_lines(params: &Value, database: &str, sql: &str) -> Result<Vec<String>, PluginError> {
     let mut cmd = base_command(params, "psql");
     cmd.arg("-d").arg(database).arg("-AtX").arg("-F").arg("\t").arg("-c").arg(sql);
@@ -193,6 +218,19 @@ fn query_lines(params: &Value, database: &str, sql: &str) -> Result<Vec<String>,
         return Err(PluginError::new(-32000, String::from_utf8_lossy(&out.stderr).trim().to_string()));
     }
     Ok(String::from_utf8_lossy(&out.stdout).lines().filter(|l| !l.is_empty()).map(String::from).collect())
+}
+
+/// Runs `sql` on the given database, falling back to `postgres` and `template1`: the given one may not exist yet
+/// (restore into a new database) and managed servers often refuse connections to `postgres`.
+fn query_any_db(params: &Value, sql: &str) -> Result<Vec<String>, PluginError> {
+    let mut first_err = None;
+    for database in [str_param(params, "database"), "postgres", "template1"].into_iter().filter(|d| !d.is_empty()) {
+        match query_lines(params, database, sql) {
+            Ok(lines) => return Ok(lines),
+            Err(err) => { first_err.get_or_insert(err); }
+        }
+    }
+    Err(first_err.unwrap_or_else(|| PluginError::new(-32000, "No database to connect to")))
 }
 
 /// Removes temp files a crashed or closed session left behind.
@@ -217,6 +255,10 @@ fn base_command(params: &Value, name: &str) -> Command {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    let ssl = str_param(params, "sslMode");
+    if SSL_MODES.contains(&ssl) {
+        cmd.env("PGSSLMODE", ssl);
+    }
     cmd
 }
 
@@ -232,7 +274,12 @@ fn build_restore(params: &Value, format: &Format, file: &str, list: Option<&Path
             if bool_param(params, "noOwner") {
                 cmd.arg("--no-owner").arg("--no-privileges");
             }
-            if let Some(jobs) = params.get("jobs").and_then(Value::as_u64).filter(|j| *j > 1) {
+            if bool_param(params, "singleTransaction") {
+                cmd.arg("--single-transaction");
+            }
+            // pg_restore refuses -j for tar archives and together with --single-transaction.
+            let parallel_ok = !bool_param(params, "singleTransaction") && !read_head(Path::new(file)).is_ok_and(|h| is_tar(&h));
+            if let Some(jobs) = params.get("jobs").and_then(Value::as_u64).filter(|j| *j > 1 && parallel_ok) {
                 cmd.arg("-j").arg(jobs.to_string());
             }
             if let Some(list) = list {
@@ -243,7 +290,13 @@ fn build_restore(params: &Value, format: &Format, file: &str, list: Option<&Path
         }
         Format::Plain => {
             let mut cmd = base_command(params, "psql");
-            cmd.arg("-d").arg(database).arg("-v").arg("ON_ERROR_STOP=0").arg("-f").arg(file);
+            cmd.arg("-d").arg(database);
+            if bool_param(params, "singleTransaction") {
+                cmd.arg("-1").arg("-v").arg("ON_ERROR_STOP=1");
+            } else {
+                cmd.arg("-v").arg("ON_ERROR_STOP=0");
+            }
+            cmd.arg("-f").arg(file);
             cmd
         }
     }
@@ -255,9 +308,10 @@ FOR s IN SELECT nspname FROM pg_namespace WHERE nspname <> 'information_schema' 
 LOOP EXECUTE format('DROP SCHEMA %I CASCADE', s); END LOOP; END $$; \
 CREATE SCHEMA public; GRANT USAGE ON SCHEMA public TO PUBLIC;";
 
-fn build_reset(params: &Value) -> Command {
+/// `psql -c sql` on the target database, stopping at the first error.
+fn psql_command(params: &Value, sql: &str) -> Command {
     let mut cmd = base_command(params, "psql");
-    cmd.arg("-d").arg(str_param(params, "database")).arg("-v").arg("ON_ERROR_STOP=1").arg("-c").arg(RESET_SQL);
+    cmd.arg("-d").arg(str_param(params, "database")).arg("-v").arg("ON_ERROR_STOP=1").arg("-c").arg(sql);
     cmd
 }
 
@@ -415,16 +469,14 @@ impl Plugin {
             }
             if let Some(sql) = roles_sql(&roles).filter(|_| lock(&shared).running) {
                 lock(&shared).push(&format!("Creating missing roles as NOLOGIN: {}", roles.join(", ")));
-                let mut cmd = base_command(&params, "psql");
-                cmd.arg("-d").arg(str_param(&params, "database")).arg("-v").arg("ON_ERROR_STOP=1").arg("-c").arg(sql);
-                if run_step(&shared, cmd) != 0 {
+                if run_step(&shared, psql_command(&params, &sql)) != 0 {
                     lock(&shared).push("warning: could not create roles (needs CREATEROLE), continuing...");
                 }
             }
             let mut code = 0;
             if bool_param(&params, "resetDb") && lock(&shared).running {
                 lock(&shared).push("Resetting database: dropping all schemas, recreating empty public...");
-                code = run_step(&shared, build_reset(&params));
+                code = run_step(&shared, psql_command(&params, RESET_SQL));
                 if code != 0 {
                     lock(&shared).push("Reset failed, restore aborted.");
                 }
@@ -435,6 +487,13 @@ impl Plugin {
                 } else {
                     -1
                 };
+                // pg_restore / psql leave planner statistics empty; exit 1 is pg_restore's "finished with errors".
+                if bool_param(&params, "analyze") && matches!(code, 0 | 1) && lock(&shared).running {
+                    lock(&shared).push("Updating planner statistics (ANALYZE)...");
+                    if run_step(&shared, psql_command(&params, "ANALYZE")) != 0 {
+                        lock(&shared).push("warning: ANALYZE failed; statistics will be updated by autovacuum later.");
+                    }
+                }
             }
             if let Some(list) = list {
                 let _ = std::fs::remove_file(list);
@@ -568,14 +627,7 @@ impl Plugin {
     }
 
     fn list_databases(&self, params: Value) -> Result<Value, PluginError> {
-        let mut cmd = base_command(&params, "psql");
-        cmd.arg("-d").arg("postgres").arg("-Atc")
-            .arg("select datname from pg_database where not datistemplate order by 1");
-        let out = cmd.output().map_err(|err| PluginError::new(-32000, format!("Failed to start psql: {err}")))?;
-        if !out.status.success() {
-            return Err(PluginError::new(-32000, String::from_utf8_lossy(&out.stderr).trim().to_string()));
-        }
-        let names: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().filter(|l| !l.is_empty()).map(String::from).collect();
+        let names = query_any_db(&params, "select datname from pg_database where not datistemplate order by 1")?;
         Ok(json!({ "databases": names }))
     }
 
@@ -590,8 +642,7 @@ impl Plugin {
                 (name.to_string(), json!({ "version": version, "major": major }))
             })
             .collect();
-        let database = Some(str_param(&params, "database")).filter(|d| !d.is_empty()).unwrap_or("postgres");
-        let server = query_lines(&params, database, "show server_version").map(|lines| lines.into_iter().next().unwrap_or_default());
+        let server = query_any_db(&params, "show server_version").map(|lines| lines.into_iter().next().unwrap_or_default());
         match server {
             Ok(version) => json!({ "tools": tools, "server": { "version": version, "major": major(&version) } }),
             Err(err) => json!({ "tools": tools, "server": null, "serverError": err.message }),
@@ -698,6 +749,19 @@ mod tests {
         assert_eq!(detect_format(&plain).unwrap(), Format::Plain);
         assert_eq!(detect_format(&tar_file).unwrap(), Format::Archive);
         assert_eq!(detect_format(&dir).unwrap(), Format::Archive);
+        let gz = dir.join("p.sql.gz");
+        std::fs::write(&gz, b"\x1f\x8b\x08\x00rest").unwrap();
+        assert!(detect_format(&gz).unwrap_err().to_string().contains("gzip-compressed"));
+
+        // Tar archives and single-transaction restores never get -j; plain SQL stops on error in one transaction.
+        let params = json!({ "database": "d", "jobs": 4 });
+        assert!(describe(&build_restore(&params, &Format::Archive, custom.to_str().unwrap(), None)).contains("-j 4"));
+        assert!(!describe(&build_restore(&params, &Format::Archive, tar_file.to_str().unwrap(), None)).contains("-j"));
+        let single = json!({ "database": "d", "jobs": 4, "singleTransaction": true });
+        let line = describe(&build_restore(&single, &Format::Archive, custom.to_str().unwrap(), None));
+        assert!(line.contains("--single-transaction") && !line.contains("-j"));
+        let line = describe(&build_restore(&single, &Format::Plain, plain.to_str().unwrap(), None));
+        assert!(line.contains("-d d -1 -v ON_ERROR_STOP=1 -f "));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -708,12 +772,17 @@ mod tests {
         assert!(line.contains("-L /l.list /x.sql"));
         assert!(!line.contains("s3cret"));
         assert!(line.contains("--clean --if-exists"));
+        let ssl = |mode: &str| build_restore(&json!({ "sslMode": mode }), &Format::Plain, "/x.sql", None)
+            .get_envs().find(|(k, _)| *k == "PGSSLMODE").and_then(|(_, v)| v.map(|v| v.to_os_string()));
+        assert_eq!(ssl("require"), Some("require".into()));
+        assert_eq!(ssl("bogus"), None);
+        assert_eq!(ssl(""), None);
     }
 
     #[test]
     fn reset_targets_database_and_stops_on_error() {
         let params = json!({ "host": "h", "port": "5432", "user": "u", "password": "p", "database": "target" });
-        let line = describe(&build_reset(&params));
+        let line = describe(&psql_command(&params, RESET_SQL));
         assert!(line.contains("-d target -v ON_ERROR_STOP=1 -c DO $$"));
         assert!(RESET_SQL.contains("NOT LIKE 'pg\\_%'"));
         assert!(RESET_SQL.ends_with("CREATE SCHEMA public; GRANT USAGE ON SCHEMA public TO PUBLIC;"));

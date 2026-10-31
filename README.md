@@ -26,7 +26,9 @@ Open **PG Backup & Restore** from the Plugin Center / sidebar, or right-click a 
 
 - **Saved connection**: fill host/port/user/password once, **Save**, then pick it next time. DBX never shares its own
   connection credentials with plugins, so profiles live in the plugin's storage (password only if *Remember password* is ticked).
-- **Database**: **↻** lists databases on the server.
+- **Database**: **↻** lists databases on the server (connects to the typed database, then `postgres`, then `template1`).
+- **SSL mode** (under *PostgreSQL client tools*): sets `PGSSLMODE`; use `require` / `verify-full` for cloud servers
+  that need TLS. Default lets libpq decide (`prefer`).
 
 A version check runs before every restore or backup: it compares `pg_dump` / `pg_restore` with the server (and with the
 pg_dump version that made the dump) and stops with a clear message instead of failing halfway. Versions are shown under
@@ -35,7 +37,8 @@ the connection form (**PostgreSQL client tools → Check versions**).
 ### Restore
 
 - **Dump file**: **Browse…** (native dialog) or drop a file onto the page; the file is streamed to a temp copy right away,
-  then inspected. You can still type a path, which is the only option for directory-format dumps.
+  then inspected. You can still type a path, which is the only option for directory-format dumps. Compressed files
+  (`.gz`, `.bz2`, `.xz`, `.zst`, `.zip`) are refused with a clear message: decompress them first.
 - **Contents** (custom / tar / directory dumps): untick schemas to skip them, or untick a table to skip only its data.
   Types and functions of skipped schemas are still restored, because other schemas often use them; foreign keys that point
   into a skipped schema fail and show as errors.
@@ -44,6 +47,10 @@ the connection form (**PostgreSQL client tools → Check versions**).
 - **Reset database** (destructive): before restoring, drops every schema in the target database (including `public`,
   `CASCADE`), recreates an empty `public`, then restores. If the reset fails (e.g. the user doesn't own a schema) the
   restore is aborted. Restore asks for a second click to confirm.
+- **Stop on first error (single transaction)**: `pg_restore --single-transaction` / `psql -1 -v ON_ERROR_STOP=1`, so a
+  failed restore leaves nothing behind. Parallel jobs are ignored in this mode (and always for tar dumps).
+- **Update statistics after restore** (on by default): runs `ANALYZE` afterwards, since a restore leaves planner
+  statistics empty and queries can be slow until autovacuum catches up.
 - Progress is shown in percent for archive dumps.
 
 ### Backup
