@@ -3,7 +3,7 @@
   "manifest_version": 1,
   "id": "alvinades98.pg-backup-restore",
   "name": "PG Backup & Restore",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "alvinades98",
   "description": "Back up and restore PostgreSQL databases (custom, tar, directory or plain SQL) using pg_dump / pg_restore / psql.",
   "icon": "assets/plugin.png",
@@ -13,7 +13,8 @@
     "host_api": "1"
   },
   "permissions": [
-    "host.storage"
+    "host.storage",
+    "host.binary"
   ],
   "entrypoints": {
     "backend": {

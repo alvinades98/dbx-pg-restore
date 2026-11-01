@@ -10,12 +10,13 @@
     "pg_restore"
   ],
   "permissions": [
-    "host.storage"
+    "host.storage",
+    "host.binary"
   ],
   "source": "https://github.com/alvinades98/dbx-pg-restore",
   "homepage": "https://github.com/alvinades98/dbx-pg-restore",
   "license": "Apache-2.0",
-  "releaseNotes": "Windows: find pg_dump / pg_restore in C:\\Program Files\\PostgreSQL\\<version>\\bin when they are not on PATH, and no console window flashes. Errors are now also shown in the Output panel.",
+  "releaseNotes": "SSL mode (PGSSLMODE) for cloud servers; the database list now falls back to postgres / template1; optional single-transaction restore that stops on the first error; ANALYZE after restore; a clear message when the dump file is compressed (.gz, .zst, .zip, …). Windows: pg_dump / pg_restore are found in C:\\Program Files\\PostgreSQL\\<version>\\bin when they are not on PATH (newest installed version) and no console window flashes; errors are also now shown in the Output panel. Declares host.binary, since the native backend runs the user's PostgreSQL client tools.",
   "localizations": {
     "zh-CN": {
       "name": "PG 备份与恢复",
